@@ -40,6 +40,7 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 ## ⚠ Εκκρεμότητες Φώτη (πριν τον πιλότο)
 
 0. ~~migration 0007 + SUPABASE_SERVICE_ROLE_KEY στο Vercel~~ ✅ ΕΓΙΝΕ 2026-08-21 (επαληθεύτηκε live: το `/api/staff/account` επιστρέφει 400/401 αντί για 503, και απορρίπτει μη συνδεδεμένα αιτήματα). ⚠ Το key ΔΕΝ είναι στο τοπικό `.env.local` — η δημιουργία κωδικών δουλεύει μόνο στο production. ⚠ Μετά από κάθε αλλαγή env var στο Vercel χρειάζεται **redeploy** για να την δει το API route.
+0β. **migration `0008_documents.sql`** — πιστοποιητικό υγείας + έγγραφα + storage bucket. Χωρίς αυτό η καρτέλα σκάει στο άνοιγμα.
 1. **Supabase → Authentication → Providers → Email: «Confirm email» OFF** — ΧΩΡΙΣ ΑΥΤΟ δεν ολοκληρώνονται οι προσκλήσεις εργαζομένων (ψευδο-email `<κινητό>@employee.vardia.app`, δεν υπάρχει inbox). **Το #1 blocker.**
 2. **Supabase → Authentication → URL Configuration**: Site URL = `https://vardia-lac.vercel.app`, Redirect URLs += `https://vardia-lac.vercel.app/**`. Χωρίς αυτό τα magic links («σύνδεση με link στο email») οδηγούν στο localhost.
 3. **Custom domain** (προαιρετικό αλλά συνιστάται πριν σταλεί σε πελάτη): π.χ. `vardia.gr` ή `vardia.aidigitalagency.gr` — το `vardia-lac.vercel.app` δεν εμπνέει σε SMS πρόσκληση.
@@ -61,6 +62,20 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 - ⚠ Η **αμοιβή** ανατρέπει το PM decision §1.1-R5 («όχι ωρομίσθια πριν το v3») — ρητό αίτημα Φώτη. Ορατή μόνο σε owner/manager/accountant (RLS `employees_admin_all`), ποτέ στον εργαζόμενο.
 - **Αρχειοθέτηση αντί διαγραφής**: τα shifts έχουν ON DELETE CASCADE, οπότε hard delete θα έσβηνε το ιστορικό της μισθοδοσίας. Η οριστική διαγραφή επιτρέπεται μόνο όταν ο εργαζόμενος δεν έχει καμία βάρδια (GDPR erasure για λάθος καταχώρηση).
 - Οι **συμφωνημένες ώρες** είναι η βάση για το επόμενο βήμα: ειδοποίηση υπέρβασης όταν το πρόγραμμα ξεπερνά το συμβατικό ωράριο.
+
+### Έλεγχοι φόρμας (`src/lib/domain/validation.ts` — 17 tests)
+Δύο επίπεδα: **σφάλματα** μπλοκάρουν την αποθήκευση, **προειδοποιήσεις** ενημερώνουν και προχωράνε (ο owner ξέρει καλύτερα).
+- Υποχρεωτικά: όνομα προγράμματος, **τμήμα**, επώνυμο, όνομα, κινητό.
+- Κινητό μέσω `normalizePhone` (μόνο έγκυρο ελληνικό)· email με regex· ΑΦΜ 9 ψηφία.
+- **Αριθμός μητρώου μοναδικός ανά κατάστημα** — το μήνυμα λέει σε ποιον ανήκει ήδη.
+- Ώρες: >40 προειδοποίηση υπερωρίας, >48 σφάλμα, ≤0 σφάλμα.
+- Τα σφάλματα εμφανίζονται **μετά την πρώτη υποβολή**, όχι ενώ πληκτρολογεί.
+
+### Πιστοποιητικό υγείας & έγγραφα (migration 0008)
+- `health_cert` (checkbox) + `health_cert_expiry` με κόκκινη ένδειξη όταν έχει λήξει — υποχρεωτικό σε κατάστημα υγειονομικού ενδιαφέροντος, ελέγχεται σε επιθεώρηση.
+- `employee_documents` + **private** Supabase Storage bucket `employee-docs` (10MB, εικόνες/PDF). ΠΟΤΕ public.
+- Storage RLS πάνω στο πρώτο path segment: `<tenant_id>/<employee_id>/<uuid>.<ext>`.
+- Πρόσβαση: owner/manager διαχειρίζονται · λογιστής βλέπει · ο εργαζόμενος **μόνο τα δικά του**. Προβολή με signed URL 5 λεπτών, ποτέ δημόσιο link.
 
 ## v1 Scope (δεσμευτικό — τίποτα άλλο)
 
