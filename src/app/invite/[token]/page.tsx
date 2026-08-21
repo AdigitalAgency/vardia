@@ -7,9 +7,15 @@ import { isValidPin, normalizePhone, phoneToAuthEmail } from "@/lib/domain/phone
 
 interface Preview {
   valid: boolean;
-  employee_name?: string;
+  employee_name?: string | null;
   tenant_name?: string;
+  role?: "employee" | "accountant" | "manager" | "owner";
 }
+
+const ROLE_LABEL: Record<string, string> = {
+  accountant: "λογιστής",
+  manager: "υπεύθυνος",
+};
 
 export default function InvitePage({ params }: PageProps<"/invite/[token]">) {
   const { token } = use(params);
@@ -20,8 +26,13 @@ export default function InvitePage({ params }: PageProps<"/invite/[token]">) {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Ο εργαζόμενος μπαίνει με κινητό+PIN· ο λογιστής/υπεύθυνος με email+κωδικό.
+  const isStaffRole = !!preview?.role && preview.role !== "employee";
 
   useEffect(() => {
     supabase
@@ -37,30 +48,55 @@ export default function InvitePage({ params }: PageProps<"/invite/[token]">) {
     e.preventDefault();
     setError(null);
 
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      setError("Δώσε έγκυρο κινητό (π.χ. 6971234567).");
-      return;
-    }
-    if (!isValidPin(pin)) {
-      setError("Το PIN πρέπει να είναι 6 ψηφία.");
-      return;
-    }
-    if (pin !== pin2) {
-      setError("Τα δύο PIN δεν ταιριάζουν.");
-      return;
+    let authEmail: string;
+    let authPassword: string;
+
+    if (isStaffRole) {
+      if (!email.includes("@")) {
+        setError("Δώσε έγκυρο email.");
+        return;
+      }
+      if (password.length < 8) {
+        setError("Ο κωδικός θέλει τουλάχιστον 8 χαρακτήρες.");
+        return;
+      }
+      authEmail = email.trim();
+      authPassword = password;
+    } else {
+      const normalized = normalizePhone(phone);
+      if (!normalized) {
+        setError("Δώσε έγκυρο κινητό (π.χ. 6971234567).");
+        return;
+      }
+      if (!isValidPin(pin)) {
+        setError("Το PIN πρέπει να είναι 6 ψηφία.");
+        return;
+      }
+      if (pin !== pin2) {
+        setError("Τα δύο PIN δεν ταιριάζουν.");
+        return;
+      }
+      authEmail = phoneToAuthEmail(normalized);
+      authPassword = pin;
     }
 
     setBusy(true);
     try {
-      const email = phoneToAuthEmail(normalized);
-      // Νέος λογαριασμός· αν το κινητό χρησιμοποιείται ήδη, μπαίνουμε με το PIN του.
-      const signUp = await supabase.auth.signUp({ email, password: pin });
+      // Νέος λογαριασμός· αν τα στοιχεία υπάρχουν ήδη, μπαίνουμε με αυτά.
+      const signUp = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+      });
       if (signUp.error) {
-        const signIn = await supabase.auth.signInWithPassword({ email, password: pin });
+        const signIn = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
         if (signIn.error) {
           throw new Error(
-            "Το κινητό χρησιμοποιείται ήδη με διαφορετικό PIN. Ζήτησε βοήθεια από τον υπεύθυνό σου."
+            isStaffRole
+              ? "Το email χρησιμοποιείται ήδη με άλλον κωδικό. Μπες από τη σελίδα σύνδεσης και ξανάνοιξε τον σύνδεσμο."
+              : "Το κινητό χρησιμοποιείται ήδη με διαφορετικό PIN. Ζήτησε βοήθεια από τον υπεύθυνό σου."
           );
         }
       }
@@ -111,57 +147,99 @@ export default function InvitePage({ params }: PageProps<"/invite/[token]">) {
         <h1 className="text-2xl font-black tracking-tight text-indigo-700">Vardia</h1>
         {preview ? (
           <p className="mb-5 mt-1 text-sm text-zinc-600">
-            Γεια σου <span className="font-bold">{preview.employee_name}</span>! Φτιάξε τους
-            κωδικούς σου για να βλέπεις το ωράριό σου στο{" "}
-            <span className="font-semibold">{preview.tenant_name}</span>.
+            {isStaffRole ? (
+              <>
+                Πρόσκληση ως{" "}
+                <span className="font-bold">{ROLE_LABEL[preview.role!] ?? preview.role}</span> στο{" "}
+                <span className="font-semibold">{preview.tenant_name}</span>. Φτιάξε τον
+                λογαριασμό σου.
+              </>
+            ) : (
+              <>
+                Γεια σου <span className="font-bold">{preview.employee_name}</span>! Φτιάξε τους
+                κωδικούς σου για να βλέπεις το ωράριό σου στο{" "}
+                <span className="font-semibold">{preview.tenant_name}</span>.
+              </>
+            )}
           </p>
         ) : (
           <p className="mb-5 mt-1 text-sm text-zinc-400">Έλεγχος συνδέσμου…</p>
         )}
 
         <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500">Κινητό</label>
-            <input
-              type="tel"
-              inputMode="numeric"
-              required
-              placeholder="6971234567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500">
-              PIN (6 ψηφία)
-            </label>
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              required
-              placeholder="······"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm tracking-[0.4em] text-zinc-900 placeholder:tracking-normal placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500">
-              Επανάλαβε το PIN
-            </label>
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              required
-              placeholder="······"
-              value={pin2}
-              onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm tracking-[0.4em] text-zinc-900 placeholder:tracking-normal placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
-            />
-          </div>
+          {isStaffRole ? (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="logistis@example.gr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">
+                  Κωδικός (8+ χαρακτήρες)
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">Κινητό</label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  required
+                  placeholder="6971234567"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">
+                  PIN (6 ψηφία)
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  placeholder="······"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm tracking-[0.4em] text-zinc-900 placeholder:tracking-normal placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">
+                  Επανάλαβε το PIN
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  placeholder="······"
+                  value={pin2}
+                  onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm tracking-[0.4em] text-zinc-900 placeholder:tracking-normal placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+            </>
+          )}
 
           <button
             type="submit"
@@ -175,7 +253,9 @@ export default function InvitePage({ params }: PageProps<"/invite/[token]">) {
         {error && <p className="mt-3 rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
         <p className="mt-4 text-center text-[11px] text-zinc-400">
-          Θυμήσου το PIN σου. Θα το χρειάζεσαι κάθε φορά που μπαίνεις.
+          {isStaffRole
+            ? "Με αυτά τα στοιχεία θα μπαίνεις από τη σελίδα σύνδεσης."
+            : "Θυμήσου το PIN σου. Θα το χρειάζεσαι κάθε φορά που μπαίνεις."}
         </p>
       </div>
     </main>

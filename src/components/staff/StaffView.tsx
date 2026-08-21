@@ -67,6 +67,30 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
     }
   }
 
+  async function inviteAccountant() {
+    setBusyId("accountant");
+    try {
+      const token = await repo.createRoleInvite(tenant.id, "accountant");
+      const url = `${location.origin}/invite/${token}`;
+      const text = `Σύνδεσμος για το πρόγραμμα βαρδιών (λογιστής): ${url}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: "Vardia", text, url });
+          return;
+        } catch {
+          // ακυρώθηκε — αντιγράφουμε
+        }
+      }
+      await navigator.clipboard.writeText(url);
+      setCopiedId("accountant");
+      setTimeout(() => setCopiedId(null), 2500);
+    } catch (e) {
+      setError("Η πρόσκληση απέτυχε: " + String((e as Error)?.message ?? e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function savePayroll(member: StaffMember, fields: PayrollFields) {
     await repo.updateEmployeePayroll(tenant.id, member.id, fields);
     setStaff((s) => s?.map((m) => (m.id === member.id ? { ...m, payroll: fields } : m)) ?? s);
@@ -148,6 +172,23 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!payrollOnly && staff && (
+        <div className="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+          <p className="text-sm font-bold text-zinc-900">Ο λογιστής σου</p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Δώσ&apos; του πρόσβαση για να κατεβάζει μόνος του το αρχείο της μισθοδοσίας. Δεν
+            μπορεί να αλλάξει το πρόγραμμα.
+          </p>
+          <button
+            onClick={inviteAccountant}
+            disabled={busyId === "accountant"}
+            className="mt-2 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 active:bg-indigo-50 disabled:opacity-50"
+          >
+            {copiedId === "accountant" ? "✓ Αντιγράφηκε" : "Πρόσκληση λογιστή"}
+          </button>
         </div>
       )}
 

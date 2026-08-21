@@ -24,6 +24,7 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
   const [bundle, setBundle] = useState<WeekBundle | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadWeek = useCallback(() => {
@@ -121,8 +122,17 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
     if (!window.confirm(msg)) return;
     setBusy(true);
     try {
-      await repo.publish(tenant.id, bundle.weekId);
+      const res = await repo.publish(tenant.id, bundle.weekId);
       setBundle((b) => (b ? { ...b, status: "published" } : b));
+      const people = res.notified === 1 ? "1 άτομο" : `${res.notified} άτομα`;
+      setNotice(
+        res.notified === 0
+          ? "Το πρόγραμμα δημοσιεύτηκε. Κανείς δεν χρειάστηκε ειδοποίηση."
+          : res.firstPublish
+            ? `Το πρόγραμμα δημοσιεύτηκε. Ειδοποιήθηκ${res.notified === 1 ? "ε" : "αν"} ${people}.`
+            : `Οι αλλαγές δημοσιεύτηκαν. Ειδοποιήθηκ${res.notified === 1 ? "ε" : "αν"} μόνο ${people} που επηρεάστηκ${res.notified === 1 ? "ε" : "αν"}.`
+      );
+      setTimeout(() => setNotice(null), 6000);
     } catch (e) {
       setError("Η δημοσίευση απέτυχε: " + String((e as Error)?.message ?? e));
     } finally {
@@ -194,6 +204,14 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
             <button onClick={() => setError(null)} className="font-bold">
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mx-auto mt-2 max-w-5xl px-3">
+          <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            {notice}
           </div>
         </div>
       )}

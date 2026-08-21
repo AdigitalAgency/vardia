@@ -5,11 +5,13 @@ import type { ScheduleRepo } from "@/lib/data/repo";
 import { LEAVE_TYPES, type CellValue, type MyScheduleWeek, type TenantInfo } from "@/lib/types";
 import { durationMinutes, formatInterval } from "@/lib/domain/time";
 import { DAY_NAMES, addDaysISO, mondayOf, shortDate, weekRangeLabel } from "@/lib/domain/week";
+import NotificationBanner from "./NotificationBanner";
 
 interface Props {
   repo: ScheduleRepo;
   tenant: TenantInfo;
 }
+
 
 function hoursOf(c: CellValue): number {
   if (c.kind !== "work" || c.start == null || c.end == null) return 0;
@@ -72,6 +74,8 @@ export default function MyScheduleView({ repo, tenant }: Props) {
           </div>
         </div>
       </header>
+
+      <NotificationBanner repo={repo} tenant={tenant} onOpenWeek={setWeekStart} />
 
       <main className="mx-auto max-w-lg px-3 pb-24 pt-3">
         {error && (

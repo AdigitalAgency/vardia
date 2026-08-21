@@ -94,6 +94,15 @@ export interface MyScheduleWeek {
   cells: CellValue[];
 }
 
+export interface AppNotification {
+  id: string;
+  kind: "schedule_published" | "schedule_changed" | string;
+  /** { week_start, tenant_name } */
+  payload: Record<string, string>;
+  readAt: string | null;
+  createdAt: string;
+}
+
 export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export interface LeaveRequest {

@@ -1,5 +1,6 @@
 import {
   EMPTY_CELL,
+  type AppNotification,
   type CellValue,
   type LeaveRequest,
   type PayrollFields,
@@ -60,11 +61,14 @@ interface DemoWeek {
   weekStart: string;
   status: WeekBundle["status"];
   cells: Record<string, CellValue[]>;
+  /** ποιοι άλλαξαν από την τελευταία δημοσίευση — ίδια λογική με το shift_revisions */
+  changedSincePublish: Set<string>;
 }
 
 const weeks = new Map<string, DemoWeek>();
 const presetUsage: Record<string, Record<string, number>> = {};
 const leaveRequests: LeaveRequest[] = [];
+const notifications: AppNotification[] = [];
 let seeded = false;
 
 // Στο demo οι δύο πρώτοι έχουν στοιχεία μισθοδοσίας, οι υπόλοιποι όχι — ώστε να
@@ -98,7 +102,13 @@ function seedWeek(weekStart: string): DemoWeek {
   for (let d = 0; d < 7; d++) set("e09", d, d >= 4 ? "p8" : "p4");
   for (let d = 0; d < 7; d++) set("e14", d, d === 0 || d === 3 ? "p8" : "p6");
   cells["e15"][2] = { kind: "adeia", leaveType: "kanoniki" };
-  return { weekId: `w-${weekStart}`, weekStart, status: "draft", cells };
+  return {
+    weekId: `w-${weekStart}`,
+    weekStart,
+    status: "draft",
+    cells,
+    changedSincePublish: new Set(),
+  };
 }
 
 function seedOnce(weekStart: string) {
@@ -137,7 +147,13 @@ function seedOnce(weekStart: string) {
 function getOrCreate(weekStart: string): DemoWeek {
   let w = weeks.get(weekStart);
   if (!w) {
-    w = { weekId: `w-${weekStart}`, weekStart, status: "draft", cells: emptyCells() };
+    w = {
+      weekId: `w-${weekStart}`,
+      weekStart,
+      status: "draft",
+      cells: emptyCells(),
+      changedSincePublish: new Set(),
+    };
     weeks.set(weekStart, w);
   }
   return w;
@@ -173,7 +189,10 @@ export const demoRepo: ScheduleRepo = {
     if (!week) return;
     week.cells[employeeId][dayIndex] = value;
     if (value.kind === "work") bumpUsage(employeeId, value.presetId);
-    if (week.status === "published") week.status = "published_dirty";
+    if (week.status === "published" || week.status === "published_dirty") {
+      week.status = "published_dirty";
+      week.changedSincePublish.add(employeeId);
+    }
   },
 
   async copyPreviousWeek(_tenantId, _weekId, weekStart) {
@@ -186,12 +205,49 @@ export const demoRepo: ScheduleRepo = {
         row.map((c) => (c.kind === "work" || c.kind === "repo" ? { ...c } : { ...EMPTY_CELL })),
       ])
     );
+    if (cur.status === "published" || cur.status === "published_dirty") {
+      cur.status = "published_dirty";
+      Object.keys(cur.cells).forEach((id) => cur.changedSincePublish.add(id));
+    }
     return this.getWeek(_tenantId, weekStart);
   },
 
   async publish(_tenantId, weekId) {
     const week = [...weeks.values()].find((w) => w.weekId === weekId);
-    if (week) week.status = "published";
+    if (!week) return { notified: 0, firstPublish: false };
+    const firstPublish = week.status === "draft";
+    // Πρώτη δημοσίευση: όλοι με κελί. Επαναδημοσίευση: μόνο όσοι άλλαξαν.
+    const notified = firstPublish
+      ? Object.values(week.cells).filter((row) => row.some((c) => c.kind !== "empty")).length
+      : week.changedSincePublish.size;
+    week.status = "published";
+    week.changedSincePublish.clear();
+    notifications.unshift({
+      id: `n${notifications.length + 1}`,
+      kind: firstPublish ? "schedule_published" : "schedule_changed",
+      payload: { week_start: week.weekStart, tenant_name: "The Little Mosque (demo)" },
+      readAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    return { notified, firstPublish };
+  },
+
+  async createRoleInvite(_tenantId, role) {
+    return `demo-token-${role}`;
+  },
+
+  async listNotifications() {
+    return structuredClone(notifications);
+  },
+
+  async markNotificationsRead(_tenantId, ids) {
+    for (const n of notifications) {
+      if (ids.includes(n.id)) n.readAt = new Date().toISOString();
+    }
+  },
+
+  async savePushSubscription() {
+    // no-op στο demo
   },
 
   async listStaff() {
@@ -308,7 +364,10 @@ export const demoRepo: ScheduleRepo = {
       const dayIndex = Math.round((Date.parse(d) - Date.parse(week.weekStart)) / 86400000);
       week.cells[req.employeeId][dayIndex] =
         req.type === "repo" ? { kind: "repo" } : { kind: "adeia", leaveType: req.type };
-      if (week.status === "published") week.status = "published_dirty";
+      if (week.status === "published" || week.status === "published_dirty") {
+        week.status = "published_dirty";
+        week.changedSincePublish.add(req.employeeId);
+      }
     }
   },
 };

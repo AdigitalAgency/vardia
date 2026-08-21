@@ -492,6 +492,27 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       return token;
     },
 
+    async createRoleInvite(tenantId, role) {
+      const token = crypto.randomUUID().replace(/-/g, "");
+      const { data: user } = await supabase.auth.getUser();
+      await supabase
+        .from("employee_invites")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("role", role)
+        .is("employee_id", null)
+        .is("used_at", null);
+      const { error } = await supabase.from("employee_invites").insert({
+        tenant_id: tenantId,
+        employee_id: null,
+        role,
+        token,
+        created_by: user.user?.id ?? null,
+      });
+      if (error) throw error;
+      return token;
+    },
+
     async getMySchedule(tenantId, weekStart) {
       const { data: me, error: eerr } = await supabase
         .from("employees")
@@ -567,15 +588,51 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
     },
 
     async publish(_tenantId, weekId) {
-      const { data: user } = await supabase.auth.getUser();
+      // Το RPC κάνει τη δημοσίευση ΚΑΙ γράφει ειδοποιήσεις μόνο στους επηρεαζόμενους.
+      const { data, error } = await supabase.rpc("publish_week", { p_week_id: weekId });
+      if (error) throw error;
+      const res = (data ?? {}) as { notified?: number; first_publish?: boolean };
+      return { notified: res.notified ?? 0, firstPublish: res.first_publish ?? false };
+    },
+
+    async listNotifications(tenantId) {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id, kind, payload, read_at, created_at")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []).map((n) => ({
+        id: n.id,
+        kind: n.kind,
+        payload: (n.payload ?? {}) as Record<string, string>,
+        readAt: n.read_at,
+        createdAt: n.created_at,
+      }));
+    },
+
+    async markNotificationsRead(tenantId, ids) {
+      if (!ids.length) return;
       const { error } = await supabase
-        .from("schedule_weeks")
-        .update({
-          status: "published",
-          published_at: new Date().toISOString(),
-          published_by: user.user?.id ?? null,
-        })
-        .eq("id", weekId);
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("tenant_id", tenantId)
+        .in("id", ids);
+      if (error) throw error;
+    },
+
+    async savePushSubscription(sub) {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user || !sub.endpoint) return;
+      const { error } = await supabase.from("push_subscriptions").upsert(
+        {
+          user_id: user.user.id,
+          endpoint: sub.endpoint,
+          keys: sub.keys ?? {},
+        },
+        { onConflict: "endpoint" }
+      );
       if (error) throw error;
     },
   };

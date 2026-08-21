@@ -1,4 +1,5 @@
 import type {
+  AppNotification,
   CellValue,
   LeaveRequest,
   MyScheduleWeek,
@@ -37,7 +38,8 @@ export interface ScheduleRepo {
   ): Promise<void>;
   /** Αντιγράφει τα κελιά της προηγούμενης εβδομάδας στην τρέχουσα (draft). */
   copyPreviousWeek(tenantId: string, weekId: string, weekStart: string): Promise<WeekBundle>;
-  publish(tenantId: string, weekId: string): Promise<void>;
+  /** Δημοσίευση + στοχευμένες ειδοποιήσεις· επιστρέφει πόσοι ειδοποιήθηκαν. */
+  publish(tenantId: string, weekId: string): Promise<{ notified: number; firstPublish: boolean }>;
   listLeaveRequests(tenantId: string): Promise<LeaveRequest[]>;
   /**
    * Έγκριση/απόρριψη αιτήματος. Στην έγκριση, οι αντίστοιχες ημέρες
@@ -53,6 +55,8 @@ export interface ScheduleRepo {
   listStaff(tenantId: string): Promise<StaffMember[]>;
   /** Δημιουργεί (ή ανανεώνει) invite token για εργαζόμενο· επιστρέφει το token. */
   createInvite(tenantId: string, employeeId: string): Promise<string>;
+  /** Πρόσκληση λογιστή ή υπεύθυνου — χωρίς σύνδεση με καρτέλα εργαζομένου. */
+  createRoleInvite(tenantId: string, role: "accountant" | "manager"): Promise<string>;
   updateEmployeePayroll(
     tenantId: string,
     employeeId: string,
@@ -73,4 +77,11 @@ export interface ScheduleRepo {
     tenantId: string,
     input: { type: string; dateFrom: string; dateTo: string; comment?: string }
   ): Promise<void>;
+
+  // ---------- Ειδοποιήσεις (όλοι οι ρόλοι) ----------
+
+  listNotifications(tenantId: string): Promise<AppNotification[]>;
+  markNotificationsRead(tenantId: string, ids: string[]): Promise<void>;
+  /** Αποθηκεύει push subscription του τρέχοντος χρήστη. */
+  savePushSubscription(sub: PushSubscriptionJSON): Promise<void>;
 }
