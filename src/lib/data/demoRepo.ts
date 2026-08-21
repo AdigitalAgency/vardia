@@ -3,6 +3,7 @@ import {
   type AppNotification,
   type CellValue,
   type LeaveRequest,
+  type EmployeeDocument,
   type EmployeeInput,
   type PayrollFields,
   type ShiftPreset,
@@ -100,8 +101,13 @@ const EMPTY_DETAILS: EmployeeDetails = {
   weeklyHours: null,
   payType: null,
   payAmount: null,
+  healthCert: false,
+  healthCertExpiry: null,
   notes: null,
 };
+
+/** employeeId → έγγραφα (in-memory, το demo δεν ανεβάζει πουθενά) */
+const documents: Record<string, EmployeeDocument[]> = {};
 
 function extractDetails(input: EmployeeInput): EmployeeDetails {
   const { fullName: _n, departmentId: _d, payroll: _p, ...rest } = input;
@@ -117,6 +123,8 @@ const details: Record<string, EmployeeDetails> = {
     payType: "monthly",
     payAmount: 950,
     hireDate: "2024-05-01",
+    healthCert: true,
+    healthCertExpiry: "2027-04-30",
   },
   e05: {
     ...EMPTY_DETAILS,
@@ -394,6 +402,34 @@ export const demoRepo: ScheduleRepo = {
 
   async createEmployeeAccount(_tenantId, employeeId, phone) {
     accounts.set(employeeId, phone);
+  },
+
+  async listDocuments(_tenantId, employeeId) {
+    return structuredClone(documents[employeeId] ?? []);
+  },
+
+  async uploadDocument(_tenantId, employeeId, file, kind) {
+    const doc: EmployeeDocument = {
+      id: `doc-${Object.keys(documents).length}-${file.name}`,
+      fileName: file.name,
+      storagePath: `demo/${employeeId}/${file.name}`,
+      mimeType: file.type || null,
+      sizeBytes: file.size,
+      kind,
+      createdAt: new Date().toISOString(),
+    };
+    (documents[employeeId] ??= []).unshift(doc);
+    return doc;
+  },
+
+  async deleteDocument(_tenantId, doc) {
+    for (const key of Object.keys(documents)) {
+      documents[key] = documents[key].filter((d) => d.id !== doc.id);
+    }
+  },
+
+  async getDocumentUrl() {
+    return "#demo-file";
   },
 
   async updateEmployeePayroll(_tenantId, employeeId, fields) {

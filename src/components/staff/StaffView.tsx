@@ -6,6 +6,7 @@ import {
   CONTRACT_LABELS,
   PAY_LABELS,
   type Department,
+  type EmployeeDocument,
   type EmployeeInput,
   type StaffMember,
   type TenantInfo,
@@ -31,6 +32,7 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [creating, setCreating] = useState(false);
+  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [accountantBusy, setAccountantBusy] = useState(false);
@@ -61,6 +63,22 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
     () => (staff ?? []).filter((m) => m.status === "active" && !m.hasAccess).length,
     [staff]
   );
+
+  const openEmployee = useCallback(
+    (m: StaffMember) => {
+      setEditing(m);
+      setDocuments([]);
+      repo
+        .listDocuments(tenant.id, m.id)
+        .then(setDocuments)
+        .catch(() => {});
+    },
+    [repo, tenant.id]
+  );
+
+  async function refreshDocuments(employeeId: string) {
+    setDocuments(await repo.listDocuments(tenant.id, employeeId));
+  }
 
   async function save(input: EmployeeInput) {
     if (creating) {
@@ -181,7 +199,7 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
               {staff.map((m) => (
                 <tr
                   key={m.id}
-                  onClick={() => setEditing(m)}
+                  onClick={() => openEmployee(m)}
                   className={`cursor-pointer border-b border-zinc-100 last:border-0 hover:bg-indigo-50/40 ${
                     m.status !== "active" ? "opacity-50" : ""
                   }`}
@@ -262,7 +280,29 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
         <EmployeeSheet
           member={editing}
           departments={departments}
+          others={staff ?? []}
           showAfm={payrollOnly}
+          documents={documents}
+          onUploadDocument={
+            editing
+              ? async (file, kind) => {
+                  await repo.uploadDocument(tenant.id, editing.id, file, kind);
+                  await refreshDocuments(editing.id);
+                }
+              : undefined
+          }
+          onDeleteDocument={
+            editing
+              ? async (doc) => {
+                  await repo.deleteDocument(tenant.id, doc);
+                  await refreshDocuments(editing.id);
+                }
+              : undefined
+          }
+          onOpenDocument={async (doc) => {
+            const url = await repo.getDocumentUrl(doc);
+            window.open(url, "_blank", "noopener");
+          }}
           onSave={save}
           onCreateAccount={
             editing && !payrollOnly

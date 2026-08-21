@@ -85,6 +85,9 @@ export interface StaffMember {
   weeklyHours: number | null;
   payType: PayType | null;
   payAmount: number | null;
+  /** Πιστοποιητικό υγείας — υποχρεωτικό σε κατάστημα υγειονομικού ενδιαφέροντος */
+  healthCert: boolean;
+  healthCertExpiry: string | null;
   notes: string | null;
   status: string;
   sortOrder: number;
@@ -110,6 +113,16 @@ export type EmployeeInput = Omit<
   StaffMember,
   "id" | "departmentName" | "hasAccess" | "loginPhone" | "status" | "sortOrder"
 >;
+
+export interface EmployeeDocument {
+  id: string;
+  fileName: string;
+  storagePath: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  kind: string;
+  createdAt: string;
+}
 
 export interface PeriodEmployee extends PayrollFields {
   id: string;

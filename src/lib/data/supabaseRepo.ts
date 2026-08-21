@@ -66,6 +66,8 @@ function employeeColumns(input: EmployeeInput) {
     weekly_hours: input.weeklyHours ?? null,
     pay_type: input.payType || null,
     pay_amount: input.payAmount ?? null,
+    health_cert: input.healthCert,
+    health_cert_expiry: input.healthCertExpiry || null,
     notes: t(input.notes),
     payroll_id: t(input.payroll.payrollId),
     afm: t(input.payroll.afm),
@@ -448,7 +450,7 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       let q = supabase
         .from("employees")
         .select(
-          "id, full_name, user_id, sort_order, status, afm, payroll_id, first_name, last_name, department_id, phone, email, hire_date, contract_type, weekly_hours, pay_type, pay_amount, notes, login_phone, departments(name)"
+          "id, full_name, user_id, sort_order, status, afm, payroll_id, first_name, last_name, department_id, phone, email, hire_date, contract_type, weekly_hours, pay_type, pay_amount, health_cert, health_cert_expiry, notes, login_phone, departments(name)"
         )
         .eq("tenant_id", tenantId)
         .order("sort_order");
@@ -469,6 +471,8 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
         weeklyHours: e.weekly_hours == null ? null : Number(e.weekly_hours),
         payType: e.pay_type,
         payAmount: e.pay_amount == null ? null : Number(e.pay_amount),
+        healthCert: !!e.health_cert,
+        healthCertExpiry: e.health_cert_expiry,
         notes: e.notes,
         status: e.status,
         sortOrder: e.sort_order,
@@ -519,6 +523,86 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
             : error.message
         );
       }
+    },
+
+    async listDocuments(tenantId, employeeId) {
+      const { data, error } = await supabase
+        .from("employee_documents")
+        .select("id, file_name, storage_path, mime_type, size_bytes, kind, created_at")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((d) => ({
+        id: d.id,
+        fileName: d.file_name,
+        storagePath: d.storage_path,
+        mimeType: d.mime_type,
+        sizeBytes: d.size_bytes == null ? null : Number(d.size_bytes),
+        kind: d.kind,
+        createdAt: d.created_at,
+      }));
+    },
+
+    async uploadDocument(tenantId, employeeId, file, kind) {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+      // Πρώτο segment = tenant: πάνω σε αυτό δουλεύει το storage RLS policy.
+      const path = `${tenantId}/${employeeId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("employee-docs")
+        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+      if (upErr) throw new Error("Το ανέβασμα απέτυχε: " + upErr.message);
+
+      const { data: user } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from("employee_documents")
+        .insert({
+          tenant_id: tenantId,
+          employee_id: employeeId,
+          storage_path: path,
+          file_name: file.name,
+          mime_type: file.type || null,
+          size_bytes: file.size,
+          kind,
+          uploaded_by: user.user?.id ?? null,
+        })
+        .select("id, file_name, storage_path, mime_type, size_bytes, kind, created_at")
+        .single();
+
+      if (error) {
+        // Μην αφήσεις ορφανό αρχείο στο storage.
+        await supabase.storage.from("employee-docs").remove([path]);
+        throw error;
+      }
+
+      return {
+        id: data.id,
+        fileName: data.file_name,
+        storagePath: data.storage_path,
+        mimeType: data.mime_type,
+        sizeBytes: data.size_bytes == null ? null : Number(data.size_bytes),
+        kind: data.kind,
+        createdAt: data.created_at,
+      };
+    },
+
+    async deleteDocument(tenantId, doc) {
+      const { error } = await supabase
+        .from("employee_documents")
+        .delete()
+        .eq("id", doc.id)
+        .eq("tenant_id", tenantId);
+      if (error) throw error;
+      await supabase.storage.from("employee-docs").remove([doc.storagePath]);
+    },
+
+    async getDocumentUrl(doc) {
+      const { data, error } = await supabase.storage
+        .from("employee-docs")
+        .createSignedUrl(doc.storagePath, 300); // 5 λεπτά
+      if (error) throw error;
+      return data.signedUrl;
     },
 
     async createEmployeeAccount(tenantId, employeeId, phone, pin) {

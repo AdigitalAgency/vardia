@@ -6,17 +6,25 @@ import {
   PAY_LABELS,
   type ContractType,
   type Department,
+  type EmployeeDocument,
   type EmployeeInput,
   type PayType,
   type StaffMember,
 } from "@/lib/types";
 import { isValidPin, normalizePhone } from "@/lib/domain/phone";
+import { hasErrors, validateEmployee, type ValidationResult } from "@/lib/domain/validation";
 
 interface Props {
   member: StaffMember | null; // null = νέος εργαζόμενος
   departments: Department[];
+  /** Οι υπόλοιποι εργαζόμενοι — για έλεγχο διπλότυπου αριθμού μητρώου. */
+  others?: Pick<StaffMember, "id" | "payroll" | "fullName">[];
   /** Το ΑΦΜ επεξεργάζεται μόνο ο λογιστής — ο owner δεν το χρειάζεται (data minimization). */
   showAfm?: boolean;
+  documents?: EmployeeDocument[];
+  onUploadDocument?: (file: File, kind: string) => Promise<void>;
+  onDeleteDocument?: (doc: EmployeeDocument) => Promise<void>;
+  onOpenDocument?: (doc: EmployeeDocument) => Promise<void>;
   onSave: (input: EmployeeInput) => Promise<void>;
   onCreateAccount?: (phone: string, pin: string) => Promise<void>;
   onArchive?: (archive: boolean) => Promise<void>;
@@ -27,6 +35,13 @@ interface Props {
 const INPUT =
   "w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none";
 const LABEL = "mb-1 block text-xs font-medium text-zinc-500";
+
+/** Κόκκινο πλαίσιο όταν το πεδίο έχει σφάλμα. */
+function inputCls(error?: string): string {
+  return error
+    ? INPUT.replace("border-zinc-300", "border-red-400 bg-red-50/40")
+    : INPUT;
+}
 
 function emptyInput(): EmployeeInput {
   return {
@@ -39,6 +54,8 @@ function emptyInput(): EmployeeInput {
     weeklyHours: null,
     payType: null,
     payAmount: null,
+    healthCert: false,
+    healthCertExpiry: null,
     notes: null,
     payroll: { payrollId: null, afm: null, firstName: null, lastName: null },
   };
@@ -55,6 +72,8 @@ function fromMember(m: StaffMember): EmployeeInput {
     weeklyHours: m.weeklyHours,
     payType: m.payType,
     payAmount: m.payAmount,
+    healthCert: m.healthCert,
+    healthCertExpiry: m.healthCertExpiry,
     notes: m.notes,
     payroll: { ...m.payroll },
   };
@@ -63,7 +82,12 @@ function fromMember(m: StaffMember): EmployeeInput {
 export default function EmployeeSheet({
   member,
   departments,
+  others = [],
   showAfm,
+  documents = [],
+  onUploadDocument,
+  onDeleteDocument,
+  onOpenDocument,
   onSave,
   onCreateAccount,
   onArchive,
@@ -73,6 +97,13 @@ export default function EmployeeSheet({
   const [form, setForm] = useState<EmployeeInput>(member ? fromMember(member) : emptyInput());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const validation: ValidationResult = validateEmployee(form, others, member?.id);
+  // Τα σφάλματα εμφανίζονται μετά την πρώτη προσπάθεια αποθήκευσης — όχι ενώ γράφει.
+  const err = (field: string) => (touched ? validation.errors[field] : undefined);
+  const warn = (field: string) => validation.warnings[field];
 
   // Πρόσβαση
   const [accountOpen, setAccountOpen] = useState(false);
@@ -94,22 +125,39 @@ export default function EmployeeSheet({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.fullName.trim()) {
-      setError("Το όνομα είναι απαραίτητο.");
-      return;
-    }
-    const afm = form.payroll.afm?.replace(/\D/g, "") ?? "";
-    if (afm && afm.length !== 9) {
-      setError("Το ΑΦΜ έχει 9 ψηφία.");
+    setTouched(true);
+    if (hasErrors(validation)) {
+      setError("Διόρθωσε τα σημειωμένα πεδία.");
+      document.querySelector("[data-invalid=true]")?.scrollIntoView({ block: "center" });
       return;
     }
     setBusy(true);
     setError(null);
     try {
+      const afm = form.payroll.afm?.replace(/\D/g, "") ?? "";
       await onSave({ ...form, payroll: { ...form.payroll, afm: afm || null } });
     } catch (e) {
       setError("Η αποθήκευση απέτυχε: " + String((e as Error)?.message ?? e));
       setBusy(false);
+    }
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>, kind: string) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !onUploadDocument) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Το αρχείο ξεπερνά τα 10MB.");
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    try {
+      await onUploadDocument(file, kind);
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -174,58 +222,71 @@ export default function EmployeeSheet({
           )}
 
           <Section title="Βασικά">
-            <div>
-              <label className={LABEL}>Όνομα στο πρόγραμμα *</label>
+            <Field label="Όνομα στο πρόγραμμα" required error={err("fullName")}>
               <input
                 autoFocus={isNew}
                 value={form.fullName}
                 onChange={(e) => set("fullName", e.target.value)}
                 placeholder="π.χ. Ρόκκας"
-                className={INPUT}
+                className={inputCls(err("fullName"))}
               />
               <p className="mt-1 text-[11px] text-zinc-400">
                 Ό,τι γράφεις κι εσύ στο χαρτί — αυτό φαίνεται στο grid.
               </p>
-            </div>
-            <div>
-              <label className={LABEL}>Τμήμα</label>
+            </Field>
+            <Field label="Τμήμα" required error={err("departmentId")}>
               <select
                 value={form.departmentId ?? ""}
                 onChange={(e) => set("departmentId", e.target.value || null)}
-                className={INPUT}
+                className={inputCls(err("departmentId"))}
               >
-                <option value="">—</option>
+                <option value="">— Διάλεξε —</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
                 ))}
               </select>
+            </Field>
+            <div className="flex gap-2">
+              <Field label="Επώνυμο" required error={err("lastName")} className="flex-1">
+                <input
+                  value={form.payroll.lastName ?? ""}
+                  onChange={(e) => setPayroll("lastName", e.target.value)}
+                  className={inputCls(err("lastName"))}
+                />
+              </Field>
+              <Field label="Όνομα" required error={err("firstName")} className="flex-1">
+                <input
+                  value={form.payroll.firstName ?? ""}
+                  onChange={(e) => setPayroll("firstName", e.target.value)}
+                  className={inputCls(err("firstName"))}
+                />
+              </Field>
             </div>
           </Section>
 
           <Section title="Επικοινωνία">
             <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Κινητό</label>
+              <Field label="Κινητό" required error={err("phone")} className="flex-1">
                 <input
                   type="tel"
                   inputMode="numeric"
                   value={form.phone ?? ""}
                   onChange={(e) => set("phone", e.target.value)}
                   placeholder="6971234567"
-                  className={INPUT}
+                  className={inputCls(err("phone"))}
                 />
-              </div>
-              <div className="flex-1">
-                <label className={LABEL}>Email</label>
+              </Field>
+              <Field label="Email" error={err("email")} className="flex-1">
                 <input
                   type="email"
                   value={form.email ?? ""}
                   onChange={(e) => set("email", e.target.value)}
-                  className={INPUT}
+                  placeholder="name@example.gr"
+                  className={inputCls(err("email"))}
                 />
-              </div>
+              </Field>
             </div>
           </Section>
 
@@ -239,8 +300,7 @@ export default function EmployeeSheet({
                 className={INPUT}
               />
             </div>
-            <div>
-              <label className={LABEL}>Σύμβαση</label>
+            <Field label="Σύμβαση" warning={warn("contractType")}>
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(CONTRACT_LABELS) as ContractType[]).map((k) => (
                   <button
@@ -257,25 +317,30 @@ export default function EmployeeSheet({
                   </button>
                 ))}
               </div>
-            </div>
-            <div>
-              <label className={LABEL}>Συμφωνημένες ώρες / εβδομάδα</label>
+            </Field>
+            <Field
+              label="Συμφωνημένες ώρες / εβδομάδα"
+              error={err("weeklyHours")}
+              warning={warn("weeklyHours")}
+            >
               <input
                 type="number"
                 min={0}
-                max={60}
+                max={48}
                 step={0.5}
                 value={form.weeklyHours ?? ""}
                 onChange={(e) =>
                   set("weeklyHours", e.target.value === "" ? null : Number(e.target.value))
                 }
                 placeholder="40"
-                className={INPUT}
+                className={inputCls(err("weeklyHours"))}
               />
-              <p className="mt-1 text-[11px] text-zinc-400">
-                Βάση σύγκρισης: θα σε ειδοποιεί όταν το πρόγραμμα ξεπερνά τις ώρες του.
-              </p>
-            </div>
+              {!warn("weeklyHours") && !err("weeklyHours") && (
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  Βάση σύγκρισης: θα σε ειδοποιεί όταν το πρόγραμμα ξεπερνά τις ώρες του.
+                </p>
+              )}
+            </Field>
           </Section>
 
           <Section title="Αμοιβή">
@@ -294,10 +359,11 @@ export default function EmployeeSheet({
               ))}
             </div>
             {form.payType && (
-              <div>
-                <label className={LABEL}>
-                  Ποσό ({form.payType === "hourly" ? "€ / ώρα" : form.payType === "daily" ? "€ / ημέρα" : "€ / μήνα"})
-                </label>
+              <Field
+                label={`Ποσό (${form.payType === "hourly" ? "€ / ώρα" : form.payType === "daily" ? "€ / ημέρα" : "€ / μήνα"})`}
+                error={err("payAmount")}
+                warning={warn("payAmount")}
+              >
                 <input
                   type="number"
                   min={0}
@@ -306,59 +372,139 @@ export default function EmployeeSheet({
                   onChange={(e) =>
                     set("payAmount", e.target.value === "" ? null : Number(e.target.value))
                   }
-                  className={INPUT}
+                  className={inputCls(err("payAmount"))}
                 />
-              </div>
+              </Field>
             )}
             <p className="mt-1 text-[11px] text-zinc-400">
               Το βλέπεις μόνο εσύ και ο λογιστής. Ο εργαζόμενος δεν έχει πρόσβαση.
             </p>
           </Section>
 
+          <Section title="Πιστοποιητικό υγείας">
+            <label className="flex items-start gap-2.5 rounded-lg bg-zinc-50 p-3">
+              <input
+                type="checkbox"
+                checked={form.healthCert}
+                onChange={(e) => set("healthCert", e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-indigo-600"
+              />
+              <span className="text-sm text-zinc-700">
+                Έχει προσκομίσει πιστοποιητικό υγείας
+                <span className="block text-[11px] text-zinc-500">
+                  Υποχρεωτικό για εργασία σε κατάστημα υγειονομικού ενδιαφέροντος.
+                </span>
+              </span>
+            </label>
+            {form.healthCert && (
+              <Field label="Ημερομηνία λήξης">
+                <input
+                  type="date"
+                  value={form.healthCertExpiry ?? ""}
+                  onChange={(e) => set("healthCertExpiry", e.target.value || null)}
+                  className={INPUT}
+                />
+                {form.healthCertExpiry &&
+                  form.healthCertExpiry < new Date().toISOString().slice(0, 10) && (
+                    <p className="mt-1 text-[11px] font-semibold text-red-600">
+                      ⚠ Το πιστοποιητικό έχει λήξει.
+                    </p>
+                  )}
+              </Field>
+            )}
+          </Section>
+
+          {!isNew && onUploadDocument && (
+            <Section title="Έγγραφα">
+              {documents.length === 0 ? (
+                <p className="text-xs text-zinc-400">Δεν έχει ανέβει κανένα αρχείο.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {documents.map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 px-2.5 py-2"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpenDocument?.(d)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <span className="block truncate text-sm font-medium text-indigo-700">
+                          {d.fileName}
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          {d.kind === "health_cert" ? "Πιστοποιητικό υγείας" : "Έγγραφο"}
+                          {d.sizeBytes ? ` · ${Math.round(d.sizeBytes / 1024)} KB` : ""}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Διαγραφή του «${d.fileName}»;`)) return;
+                          await onDeleteDocument?.(d);
+                        }}
+                        className="shrink-0 px-2 text-xs font-bold text-red-500"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <label className="cursor-pointer rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+                  {uploading ? "Ανεβαίνει…" : "+ Πιστοποιητικό υγείας"}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    hidden
+                    disabled={uploading}
+                    onChange={(e) => handleFile(e, "health_cert")}
+                  />
+                </label>
+                <label className="cursor-pointer rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-600">
+                  + Άλλο έγγραφο
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    hidden
+                    disabled={uploading}
+                    onChange={(e) => handleFile(e, "other")}
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Φωτογραφία ή PDF, έως 10MB. Τα αρχεία είναι ιδιωτικά — τα βλέπεις εσύ, ο
+                λογιστής και ο ίδιος ο εργαζόμενος.
+              </p>
+            </Section>
+          )}
+
           <Section title="Στοιχεία για το αρχείο του λογιστή">
             <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Αρ. μητρώου</label>
+              <Field label="Αρ. μητρώου" error={err("payrollId")} className="flex-1">
                 <input
                   value={form.payroll.payrollId ?? ""}
                   onChange={(e) => setPayroll("payrollId", e.target.value)}
                   placeholder="101"
                   inputMode="numeric"
-                  className={INPUT}
+                  className={inputCls(err("payrollId"))}
                 />
-              </div>
+              </Field>
               {showAfm && (
-                <div className="flex-1">
-                  <label className={LABEL}>Α.Φ.Μ</label>
+                <Field label="Α.Φ.Μ" error={err("afm")} className="flex-1">
                   <input
                     value={form.payroll.afm ?? ""}
                     onChange={(e) => setPayroll("afm", e.target.value)}
                     placeholder="123456789"
                     inputMode="numeric"
                     maxLength={12}
-                    className={INPUT}
+                    className={inputCls(err("afm"))}
                   />
-                </div>
+                </Field>
               )}
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Επώνυμο</label>
-                <input
-                  value={form.payroll.lastName ?? ""}
-                  onChange={(e) => setPayroll("lastName", e.target.value)}
-                  placeholder={form.fullName}
-                  className={INPUT}
-                />
-              </div>
-              <div className="flex-1">
-                <label className={LABEL}>Όνομα</label>
-                <input
-                  value={form.payroll.firstName ?? ""}
-                  onChange={(e) => setPayroll("firstName", e.target.value)}
-                  className={INPUT}
-                />
-              </div>
             </div>
           </Section>
 
@@ -547,6 +693,38 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {title}
       </p>
       <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+/** Πεδίο με ετικέτα, ένδειξη υποχρεωτικού, σφάλμα (κόκκινο) και προειδοποίηση (πορτοκαλί). */
+function Field({
+  label,
+  required,
+  error,
+  warning,
+  className,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  error?: string;
+  warning?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={className} data-invalid={error ? true : undefined}>
+      <label className={LABEL}>
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </label>
+      {children}
+      {error ? (
+        <p className="mt-1 text-[11px] font-semibold text-red-600">{error}</p>
+      ) : warning ? (
+        <p className="mt-1 text-[11px] font-medium text-amber-600">⚠ {warning}</p>
+      ) : null}
     </div>
   );
 }

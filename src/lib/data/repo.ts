@@ -1,6 +1,7 @@
 import type {
   AppNotification,
   CellValue,
+  EmployeeDocument,
   EmployeeInput,
   LeaveRequest,
   MyScheduleWeek,
@@ -80,6 +81,16 @@ export interface ScheduleRepo {
     phone: string,
     pin: string
   ): Promise<void>;
+  listDocuments(tenantId: string, employeeId: string): Promise<EmployeeDocument[]>;
+  uploadDocument(
+    tenantId: string,
+    employeeId: string,
+    file: File,
+    kind: string
+  ): Promise<EmployeeDocument>;
+  deleteDocument(tenantId: string, doc: EmployeeDocument): Promise<void>;
+  /** Προσωρινό signed URL για προβολή/κατέβασμα (τα αρχεία δεν είναι δημόσια). */
+  getDocumentUrl(doc: EmployeeDocument): Promise<string>;
   /** Πρόσκληση λογιστή ή υπεύθυνου — χωρίς σύνδεση με καρτέλα εργαζομένου. */
   createRoleInvite(tenantId: string, role: "accountant" | "manager"): Promise<string>;
   updateEmployeePayroll(
