@@ -39,7 +39,7 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 
 ## ⚠ Εκκρεμότητες Φώτη (πριν τον πιλότο)
 
-0. **migration `0007_employee_directory.sql`** + **`SUPABASE_SERVICE_ROLE_KEY`** στο Vercel (Settings → Environment Variables, και τα 3 περιβάλλοντα) **και** στο τοπικό `.env.local`. Χωρίς αυτό η «Δημιουργία κωδικών» επιστρέφει 503. ⚠ ΠΟΤΕ να μη γραφτεί σε chat/commit — μόνο copy-paste από το Supabase dashboard (Settings → API → service_role).
+0. ~~migration 0007 + SUPABASE_SERVICE_ROLE_KEY στο Vercel~~ ✅ ΕΓΙΝΕ 2026-08-21 (επαληθεύτηκε live: το `/api/staff/account` επιστρέφει 400/401 αντί για 503, και απορρίπτει μη συνδεδεμένα αιτήματα). ⚠ Το key ΔΕΝ είναι στο τοπικό `.env.local` — η δημιουργία κωδικών δουλεύει μόνο στο production. ⚠ Μετά από κάθε αλλαγή env var στο Vercel χρειάζεται **redeploy** για να την δει το API route.
 1. **Supabase → Authentication → Providers → Email: «Confirm email» OFF** — ΧΩΡΙΣ ΑΥΤΟ δεν ολοκληρώνονται οι προσκλήσεις εργαζομένων (ψευδο-email `<κινητό>@employee.vardia.app`, δεν υπάρχει inbox). **Το #1 blocker.**
 2. **Supabase → Authentication → URL Configuration**: Site URL = `https://vardia-lac.vercel.app`, Redirect URLs += `https://vardia-lac.vercel.app/**`. Χωρίς αυτό τα magic links («σύνδεση με link στο email») οδηγούν στο localhost.
 3. **Custom domain** (προαιρετικό αλλά συνιστάται πριν σταλεί σε πελάτη): π.χ. `vardia.gr` ή `vardia.aidigitalagency.gr` — το `vardia-lac.vercel.app` δεν εμπνέει σε SMS πρόσκληση.
