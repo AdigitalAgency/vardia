@@ -55,6 +55,33 @@ export interface StaffMember {
   hasAccess: boolean;
   /** ενεργό invite token, αν υπάρχει και δεν έχει χρησιμοποιηθεί */
   pendingToken: string | null;
+  payroll: PayrollFields;
+}
+
+/** Τα πεδία που χρειάζεται το αρχείο του λογιστή. */
+export interface PayrollFields {
+  payrollId: string | null;
+  afm: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface PeriodEmployee extends PayrollFields {
+  id: string;
+  fullName: string;
+  departmentName: string | null;
+}
+
+export interface PeriodWeek {
+  weekStart: string;
+  published: boolean;
+  /** employeeId → 7 κελιά */
+  cells: Record<string, CellValue[]>;
+}
+
+export interface PeriodData {
+  employees: PeriodEmployee[];
+  weeks: PeriodWeek[];
 }
 
 /** Το πρόγραμμα ενός εργαζόμενου για μία εβδομάδα (employee view). */

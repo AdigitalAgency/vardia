@@ -2,18 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ScheduleRepo } from "@/lib/data/repo";
-import type { StaffMember, TenantInfo } from "@/lib/types";
+import type { PayrollFields, StaffMember, TenantInfo } from "@/lib/types";
+import PayrollSheet from "./PayrollSheet";
 
 interface Props {
   repo: ScheduleRepo;
   tenant: TenantInfo;
+  /** Ο λογιστής βλέπει μόνο τα στοιχεία μισθοδοσίας, όχι τις προσκλήσεις. */
+  payrollOnly?: boolean;
 }
 
-export default function StaffView({ repo, tenant }: Props) {
+export default function StaffView({ repo, tenant, payrollOnly }: Props) {
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<StaffMember | null>(null);
 
   const load = useCallback(() => {
     repo
@@ -63,12 +67,21 @@ export default function StaffView({ repo, tenant }: Props) {
     }
   }
 
+  async function savePayroll(member: StaffMember, fields: PayrollFields) {
+    await repo.updateEmployeePayroll(tenant.id, member.id, fields);
+    setStaff((s) => s?.map((m) => (m.id === member.id ? { ...m, payroll: fields } : m)) ?? s);
+    setEditing(null);
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-3 pb-24">
-      <h1 className="py-3 text-lg font-bold text-zinc-900">Προσωπικό</h1>
+      <h1 className="py-3 text-lg font-bold text-zinc-900">
+        {payrollOnly ? "Στοιχεία μισθοδοσίας" : "Προσωπικό"}
+      </h1>
       <p className="-mt-2 mb-3 text-xs text-zinc-500">
-        Στείλε σε κάθε εργαζόμενο τον προσωπικό του σύνδεσμο. Μπαίνει με κινητό και PIN και
-        βλέπει μόνο το δικό του ωράριο.
+        {payrollOnly
+          ? "Συμπλήρωσε ΑΦΜ, αριθμό μητρώου και ονοματεπώνυμο — αυτά μπαίνουν στο αρχείο της μισθοδοσίας."
+          : "Πάτησε σε έναν εργαζόμενο για τα στοιχεία μισθοδοσίας. Με το κουμπί «Πρόσκληση» στέλνεις τον προσωπικό του σύνδεσμο: μπαίνει με κινητό και PIN και βλέπει μόνο το δικό του ωράριο."}
       </p>
 
       {error && (
@@ -84,46 +97,66 @@ export default function StaffView({ repo, tenant }: Props) {
         <p className="p-8 text-center text-sm text-zinc-400">Φόρτωση…</p>
       ) : (
         <div className="space-y-1.5">
-          {staff.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-zinc-900">{m.fullName}</p>
-                <p className="text-xs text-zinc-500">
-                  {m.departmentName ?? "—"}
-                  {m.hasAccess ? (
-                    <span className="ml-2 text-emerald-600">✓ έχει πρόσβαση</span>
-                  ) : m.pendingToken ? (
-                    <span className="ml-2 text-orange-600">πρόσκληση σε αναμονή</span>
-                  ) : (
-                    <span className="ml-2 text-zinc-400">χωρίς πρόσβαση</span>
-                  )}
-                </p>
-              </div>
+          {staff.map((m) => {
+            const missing = !m.payroll.afm || !m.payroll.payrollId;
+            return (
+              <div
+                key={m.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5"
+              >
+                <button
+                  onClick={() => setEditing(m)}
+                  className="min-w-0 flex-1 text-left"
+                  aria-label={`Στοιχεία μισθοδοσίας ${m.fullName}`}
+                >
+                  <p className="truncate text-sm font-bold text-zinc-900">{m.fullName}</p>
+                  <p className="text-xs text-zinc-500">
+                    {m.departmentName ?? "—"}
+                    {missing ? (
+                      <span className="ml-2 text-amber-600">⚠ λείπουν ΑΦΜ/μητρώο</span>
+                    ) : (
+                      <span className="ml-2 text-zinc-400">ΑΜ {m.payroll.payrollId}</span>
+                    )}
+                    {!payrollOnly &&
+                      (m.hasAccess ? (
+                        <span className="ml-2 text-emerald-600">✓ πρόσβαση</span>
+                      ) : m.pendingToken ? (
+                        <span className="ml-2 text-orange-600">πρόσκληση σε αναμονή</span>
+                      ) : null)}
+                  </p>
+                </button>
 
-              {m.hasAccess ? (
-                <span className="shrink-0 text-lg">✅</span>
-              ) : m.pendingToken ? (
-                <button
-                  onClick={() => share(m, m.pendingToken!)}
-                  className="shrink-0 rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-semibold text-indigo-700 active:bg-indigo-50"
-                >
-                  {copiedId === m.id ? "✓ Αντιγράφηκε" : "Στείλε ξανά"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => createAndShare(m)}
-                  disabled={busyId === m.id}
-                  className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white active:bg-indigo-700 disabled:opacity-50"
-                >
-                  {copiedId === m.id ? "✓ Αντιγράφηκε" : "Πρόσκληση"}
-                </button>
-              )}
-            </div>
-          ))}
+                {!payrollOnly &&
+                  (m.hasAccess ? (
+                    <span className="shrink-0 text-lg">✅</span>
+                  ) : m.pendingToken ? (
+                    <button
+                      onClick={() => share(m, m.pendingToken!)}
+                      className="shrink-0 rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-semibold text-indigo-700 active:bg-indigo-50"
+                    >
+                      {copiedId === m.id ? "✓ Αντιγράφηκε" : "Στείλε ξανά"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => createAndShare(m)}
+                      disabled={busyId === m.id}
+                      className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white active:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {copiedId === m.id ? "✓ Αντιγράφηκε" : "Πρόσκληση"}
+                    </button>
+                  ))}
+              </div>
+            );
+          })}
         </div>
+      )}
+
+      {editing && (
+        <PayrollSheet
+          member={editing}
+          onSave={(fields) => savePayroll(editing, fields)}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );

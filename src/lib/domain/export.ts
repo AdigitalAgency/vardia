@@ -5,6 +5,8 @@
  */
 
 import { formatHHMM, type WorkInterval } from "./time";
+import type { CellValue, PeriodData } from "@/lib/types";
+import { weekRangeLabel } from "./week";
 
 export type ExportCell =
   | { kind: "work"; interval: WorkInterval }
@@ -69,6 +71,61 @@ export function buildMatrix(rows: ExportEmployeeRow[]): string[][] {
       return [r.payrollId, r.afm, r.lastName, r.firstName, ...r.cells.map(encodeCell)];
     }),
   ];
+}
+
+/** Μετατροπή κελιού προγράμματος σε κελί export. */
+export function toExportCell(c: CellValue): ExportCell {
+  if (c.kind === "work" && c.start != null && c.end != null) {
+    return { kind: "work", interval: { start: c.start, end: c.end } };
+  }
+  if (c.kind === "repo") return { kind: "repo" };
+  if (c.kind === "adeia") return { kind: "adeia", leaveType: c.leaveType ?? undefined };
+  return { kind: "empty" };
+}
+
+/** Το επώνυμο/όνομα για το export· fallback σε split του full_name. */
+export function splitName(
+  fullName: string,
+  lastName: string | null,
+  firstName: string | null
+): { lastName: string; firstName: string } {
+  if (lastName || firstName) {
+    return { lastName: lastName ?? "", firstName: firstName ?? "" };
+  }
+  const parts = fullName.trim().split(/\s+/);
+  return { lastName: parts[0] ?? "", firstName: parts.slice(1).join(" ") };
+}
+
+/**
+ * Πίνακας για ολόκληρη περίοδο. Μία εβδομάδα → ακριβώς το format του δείγματος
+ * του λογιστή. Περισσότερες → ένα block ανά εβδομάδα με γραμμή τίτλου, ώστε να
+ * παραμένει αναγνωρίσιμο και ανοιχτό σε Excel.
+ */
+export function buildPeriodMatrix(data: PeriodData): string[][] {
+  const rowsFor = (weekIndex: number): ExportEmployeeRow[] =>
+    data.employees.map((e) => {
+      const { lastName, firstName } = splitName(e.fullName, e.lastName, e.firstName);
+      return {
+        payrollId: e.payrollId ?? "",
+        afm: e.afm ?? "",
+        lastName,
+        firstName,
+        cells: (
+          data.weeks[weekIndex].cells[e.id] ??
+          Array.from({ length: 7 }, () => ({ kind: "empty" as const }))
+        ).map(toExportCell),
+      };
+    });
+
+  if (data.weeks.length === 1) return buildMatrix(rowsFor(0));
+
+  const out: string[][] = [];
+  data.weeks.forEach((w, i) => {
+    if (i > 0) out.push([]);
+    out.push([`ΕΒΔΟΜΑΔΑ ${weekRangeLabel(w.weekStart)}`]);
+    out.push(...buildMatrix(rowsFor(i)));
+  });
+  return out;
 }
 
 /**

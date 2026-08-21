@@ -340,7 +340,9 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       const [emps, invites] = await Promise.all([
         supabase
           .from("employees")
-          .select("id, full_name, user_id, sort_order, departments(name)")
+          .select(
+            "id, full_name, user_id, sort_order, afm, payroll_id, first_name, last_name, departments(name)"
+          )
           .eq("tenant_id", tenantId)
           .eq("status", "active")
           .order("sort_order"),
@@ -367,7 +369,86 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           (e.departments as unknown as { name: string } | null)?.name ?? null,
         hasAccess: !!e.user_id,
         pendingToken: tokenByEmployee.get(e.id) ?? null,
+        payroll: {
+          payrollId: e.payroll_id,
+          afm: e.afm,
+          firstName: e.first_name,
+          lastName: e.last_name,
+        },
       }));
+    },
+
+    async updateEmployeePayroll(tenantId, employeeId, fields) {
+      const { error } = await supabase
+        .from("employees")
+        .update({
+          payroll_id: fields.payrollId?.trim() || null,
+          afm: fields.afm?.trim() || null,
+          first_name: fields.firstName?.trim() || null,
+          last_name: fields.lastName?.trim() || null,
+        })
+        .eq("id", employeeId)
+        .eq("tenant_id", tenantId);
+      if (error) throw error;
+    },
+
+    async getPeriod(tenantId, weekStarts) {
+      const [emps, weeksRes] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, full_name, afm, payroll_id, first_name, last_name, sort_order, departments(name, sort_order)"
+          )
+          .eq("tenant_id", tenantId)
+          .eq("status", "active")
+          .order("sort_order"),
+        supabase
+          .from("schedule_weeks")
+          .select("id, week_start_date, status")
+          .eq("tenant_id", tenantId)
+          .in("week_start_date", weekStarts),
+      ]);
+      if (emps.error) throw emps.error;
+      if (weeksRes.error) throw weeksRes.error;
+
+      const employees = (emps.data ?? []).map((e) => ({
+        id: e.id,
+        fullName: e.full_name,
+        departmentName: (e.departments as unknown as { name: string } | null)?.name ?? null,
+        payrollId: e.payroll_id,
+        afm: e.afm,
+        firstName: e.first_name,
+        lastName: e.last_name,
+      }));
+      const employeeIds = employees.map((e) => e.id);
+      const byStart = new Map(
+        (weeksRes.data ?? []).map((w) => [w.week_start_date, w])
+      );
+
+      const weeks = await Promise.all(
+        [...weekStarts].sort().map(async (weekStart) => {
+          const w = byStart.get(weekStart);
+          if (!w) {
+            return {
+              weekStart,
+              published: false,
+              cells: Object.fromEntries(
+                employeeIds.map((id) => [
+                  id,
+                  Array.from({ length: 7 }, () => ({ ...EMPTY_CELL })),
+                ])
+              ),
+            };
+          }
+          return {
+            weekStart,
+            published: w.status !== "draft",
+            cells: await loadCells(supabase, w.id, weekStart, employeeIds),
+          };
+        })
+      );
+
+      return { employees, weeks };
     },
 
     async createInvite(tenantId, employeeId) {

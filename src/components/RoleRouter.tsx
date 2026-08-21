@@ -5,6 +5,7 @@ import type { ScheduleRepo } from "@/lib/data/repo";
 import type { TenantInfo } from "@/lib/types";
 import OwnerShell from "./OwnerShell";
 import EmployeeShell from "./employee/EmployeeShell";
+import AccountantShell from "./accountant/AccountantShell";
 
 interface Props {
   repo: ScheduleRepo;
@@ -44,9 +45,7 @@ export default function RoleRouter({ repo, demoBadge, forceRole }: Props) {
   const role = forceRole ?? tenant.role;
   const scoped = forceRole ? { ...tenant, role: forceRole } : tenant;
 
-  return role === "employee" ? (
-    <EmployeeShell repo={repo} tenant={scoped} />
-  ) : (
-    <OwnerShell repo={repo} tenant={scoped} demoBadge={demoBadge} />
-  );
+  if (role === "employee") return <EmployeeShell repo={repo} tenant={scoped} />;
+  if (role === "accountant") return <AccountantShell repo={repo} tenant={scoped} />;
+  return <OwnerShell repo={repo} tenant={scoped} demoBadge={demoBadge} />;
 }

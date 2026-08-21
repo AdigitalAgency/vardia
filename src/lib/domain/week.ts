@@ -38,3 +38,42 @@ export function shortDate(iso: string): string {
 export function weekRangeLabel(weekStart: string): string {
   return `${shortDate(weekStart)} – ${shortDate(addDaysISO(weekStart, 6))}`;
 }
+
+export const MONTH_NAMES = [
+  "Ιανουάριος",
+  "Φεβρουάριος",
+  "Μάρτιος",
+  "Απρίλιος",
+  "Μάιος",
+  "Ιούνιος",
+  "Ιούλιος",
+  "Αύγουστος",
+  "Σεπτέμβριος",
+  "Οκτώβριος",
+  "Νοέμβριος",
+  "Δεκέμβριος",
+] as const;
+
+/**
+ * Οι Δευτέρες όλων των εβδομάδων που τέμνουν τον μήνα. Ο λογιστής σκέφτεται σε
+ * μήνες (μισθοδοσία) αλλά το αρχείο του είναι εβδομαδιαίο.
+ * @param month 1-12
+ */
+export function weeksInMonth(year: number, month: number): string[] {
+  const first = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const last = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  const out: string[] = [];
+  let cursor = mondayOf(new Date(`${first}T00:00:00Z`));
+  const lastMonday = mondayOf(new Date(`${last}T00:00:00Z`));
+  while (cursor <= lastMonday) {
+    out.push(cursor);
+    cursor = addDaysISO(cursor, 7);
+  }
+  return out;
+}
+
+export function monthLabel(year: number, month: number): string {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}

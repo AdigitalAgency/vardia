@@ -2,6 +2,8 @@ import type {
   CellValue,
   LeaveRequest,
   MyScheduleWeek,
+  PayrollFields,
+  PeriodData,
   StaffMember,
   TenantInfo,
   WeekBundle,
@@ -43,6 +45,16 @@ export interface ScheduleRepo {
   listStaff(tenantId: string): Promise<StaffMember[]>;
   /** Δημιουργεί (ή ανανεώνει) invite token για εργαζόμενο· επιστρέφει το token. */
   createInvite(tenantId: string, employeeId: string): Promise<string>;
+  updateEmployeePayroll(
+    tenantId: string,
+    employeeId: string,
+    fields: PayrollFields
+  ): Promise<void>;
+
+  // ---------- Λογιστής ----------
+
+  /** Δεδομένα περιόδου για σύνοψη και export (μία ή περισσότερες εβδομάδες). */
+  getPeriod(tenantId: string, weekStarts: string[]): Promise<PeriodData>;
 
   // ---------- Employee ----------
 

@@ -6,6 +6,7 @@ import type { TenantInfo } from "@/lib/types";
 import ScheduleView from "./schedule/ScheduleView";
 import LeaveRequestsView from "./leave/LeaveRequestsView";
 import StaffView from "./staff/StaffView";
+import ExportView from "./accountant/ExportView";
 import TabBar from "./TabBar";
 
 interface Props {
@@ -36,6 +37,7 @@ export default function OwnerShell({ repo, tenant, demoBadge }: Props) {
         <LeaveRequestsView repo={repo} tenant={tenant} onDecided={refreshPending} />
       )}
       {tab === "staff" && <StaffView repo={repo} tenant={tenant} />}
+      {tab === "export" && <ExportView repo={repo} tenant={tenant} />}
 
       <TabBar
         active={tab}
@@ -47,6 +49,7 @@ export default function OwnerShell({ repo, tenant, demoBadge }: Props) {
           { key: "schedule", label: "Πρόγραμμα", icon: "🗓" },
           { key: "leave", label: "Αιτήματα", icon: "✋", badge: pendingCount },
           { key: "staff", label: "Προσωπικό", icon: "👥" },
+          { key: "export", label: "Εξαγωγή", icon: "⬇" },
         ]}
       />
     </div>

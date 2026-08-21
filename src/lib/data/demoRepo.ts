@@ -2,6 +2,7 @@ import {
   EMPTY_CELL,
   type CellValue,
   type LeaveRequest,
+  type PayrollFields,
   type ShiftPreset,
   type WeekBundle,
 } from "@/lib/types";
@@ -64,6 +65,13 @@ const weeks = new Map<string, DemoWeek>();
 const presetUsage: Record<string, Record<string, number>> = {};
 const leaveRequests: LeaveRequest[] = [];
 let seeded = false;
+
+// Στο demo οι δύο πρώτοι έχουν στοιχεία μισθοδοσίας, οι υπόλοιποι όχι — ώστε να
+// φαίνεται το warning ελλιπών στοιχείων στην οθόνη του λογιστή.
+const payrollById: Record<string, PayrollFields> = {
+  e04: { payrollId: "101", afm: "123456789", firstName: "Μαρία", lastName: "Τσιμπάνου" },
+  e05: { payrollId: "104", afm: "234567891", firstName: "Νίκος", lastName: "Γιαννούλας" },
+};
 
 function bumpUsage(employeeId: string, presetId: string | null | undefined, delta = 1) {
   if (!presetId) return;
@@ -188,11 +196,53 @@ export const demoRepo: ScheduleRepo = {
       // Στο demo: οι δύο πρώτοι έχουν ήδη πρόσβαση, ένας έχει εκκρεμή πρόσκληση.
       hasAccess: e.id === DEMO_EMPLOYEE_ID || e.id === "e14",
       pendingToken: e.id === "e05" ? "demo-token-e05" : null,
+      payroll: payrollById[e.id] ?? {
+        payrollId: null,
+        afm: null,
+        firstName: null,
+        lastName: null,
+      },
     }));
   },
 
   async createInvite(_tenantId, employeeId) {
     return `demo-token-${employeeId}`;
+  },
+
+  async updateEmployeePayroll(_tenantId, employeeId, fields) {
+    payrollById[employeeId] = { ...fields };
+  },
+
+  async getPeriod(_tenantId, weekStarts) {
+    seedOnce(weekStarts[0]);
+    return {
+      employees: EMPLOYEES.map((e) => ({
+        id: e.id,
+        fullName: e.fullName,
+        departmentName: DEPARTMENTS.find((d) => d.id === e.departmentId)?.name ?? null,
+        ...(payrollById[e.id] ?? {
+          payrollId: null,
+          afm: null,
+          firstName: null,
+          lastName: null,
+        }),
+      })),
+      weeks: [...weekStarts].sort().map((weekStart) => {
+        const w = weeks.get(weekStart);
+        return {
+          weekStart,
+          published: !!w && w.status !== "draft",
+          cells: w
+            ? structuredClone(w.cells)
+            : Object.fromEntries(
+                EMPLOYEES.map((e) => [
+                  e.id,
+                  Array.from({ length: 7 }, () => ({ ...EMPTY_CELL })),
+                ])
+              ),
+        };
+      }),
+    };
   },
 
   async getMySchedule(_tenantId, weekStart) {
