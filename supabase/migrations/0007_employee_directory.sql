@@ -2,11 +2,14 @@
 -- Ο owner διαχειρίζεται ο ίδιος το προσωπικό: στοιχεία, πόστο, συμφωνημένες ώρες,
 -- αμοιβή, και δημιουργία κωδικών πρόσβασης (χωρίς invite link).
 
-alter table employees add column if not exists position text;          -- πόστο/ειδικότητα
+-- Data minimization (απόφαση Φώτη 2026-08-21): το Vardia ΔΕΝ είναι σύστημα μισθοδοσίας.
+-- Κρατάμε μόνο ό,τι χρειάζεται για πρόγραμμα + το αρχείο του λογιστή.
+-- ΔΕΝ αποθηκεύουμε: ΑΜΚΑ, ημερομηνία γέννησης, ειδικότητα/πόστο (το τμήμα αρκεί).
+-- Το ΑΦΜ (στήλη afm, ήδη από το 0001) μένει γιατί είναι στήλη του export του λογιστή,
+-- αλλά είναι ορατό ΜΟΝΟ στην οθόνη του λογιστή — όχι στην καρτέλα του owner.
+
 alter table employees add column if not exists email text;
 alter table employees add column if not exists hire_date date;
-alter table employees add column if not exists birth_date date;        -- ανήλικοι: ειδικοί κανόνες
-alter table employees add column if not exists amka text;              -- ο λογιστής το ζητά συχνά
 alter table employees add column if not exists contract_type text;     -- full | part | rotational
 alter table employees add column if not exists weekly_hours numeric(5,2);
 alter table employees add column if not exists pay_type text;          -- hourly | daily | monthly

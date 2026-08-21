@@ -15,6 +15,8 @@ import { isValidPin, normalizePhone } from "@/lib/domain/phone";
 interface Props {
   member: StaffMember | null; // null = νέος εργαζόμενος
   departments: Department[];
+  /** Το ΑΦΜ επεξεργάζεται μόνο ο λογιστής — ο owner δεν το χρειάζεται (data minimization). */
+  showAfm?: boolean;
   onSave: (input: EmployeeInput) => Promise<void>;
   onCreateAccount?: (phone: string, pin: string) => Promise<void>;
   onArchive?: (archive: boolean) => Promise<void>;
@@ -30,12 +32,9 @@ function emptyInput(): EmployeeInput {
   return {
     fullName: "",
     departmentId: null,
-    position: null,
     phone: null,
     email: null,
     hireDate: null,
-    birthDate: null,
-    amka: null,
     contractType: null,
     weeklyHours: null,
     payType: null,
@@ -49,12 +48,9 @@ function fromMember(m: StaffMember): EmployeeInput {
   return {
     fullName: m.fullName,
     departmentId: m.departmentId,
-    position: m.position,
     phone: m.phone,
     email: m.email,
     hireDate: m.hireDate,
-    birthDate: m.birthDate,
-    amka: m.amka,
     contractType: m.contractType,
     weeklyHours: m.weeklyHours,
     payType: m.payType,
@@ -67,6 +63,7 @@ function fromMember(m: StaffMember): EmployeeInput {
 export default function EmployeeSheet({
   member,
   departments,
+  showAfm,
   onSave,
   onCreateAccount,
   onArchive,
@@ -190,31 +187,20 @@ export default function EmployeeSheet({
                 Ό,τι γράφεις κι εσύ στο χαρτί — αυτό φαίνεται στο grid.
               </p>
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Τμήμα</label>
-                <select
-                  value={form.departmentId ?? ""}
-                  onChange={(e) => set("departmentId", e.target.value || null)}
-                  className={INPUT}
-                >
-                  <option value="">—</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className={LABEL}>Πόστο</label>
-                <input
-                  value={form.position ?? ""}
-                  onChange={(e) => set("position", e.target.value)}
-                  placeholder="π.χ. Barista"
-                  className={INPUT}
-                />
-              </div>
+            <div>
+              <label className={LABEL}>Τμήμα</label>
+              <select
+                value={form.departmentId ?? ""}
+                onChange={(e) => set("departmentId", e.target.value || null)}
+                className={INPUT}
+              >
+                <option value="">—</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </Section>
 
@@ -244,25 +230,14 @@ export default function EmployeeSheet({
           </Section>
 
           <Section title="Εργασία">
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Ημ. πρόσληψης</label>
-                <input
-                  type="date"
-                  value={form.hireDate ?? ""}
-                  onChange={(e) => set("hireDate", e.target.value || null)}
-                  className={INPUT}
-                />
-              </div>
-              <div className="flex-1">
-                <label className={LABEL}>Ημ. γέννησης</label>
-                <input
-                  type="date"
-                  value={form.birthDate ?? ""}
-                  onChange={(e) => set("birthDate", e.target.value || null)}
-                  className={INPUT}
-                />
-              </div>
+            <div>
+              <label className={LABEL}>Ημ. πρόσληψης</label>
+              <input
+                type="date"
+                value={form.hireDate ?? ""}
+                onChange={(e) => set("hireDate", e.target.value || null)}
+                className={INPUT}
+              />
             </div>
             <div>
               <label className={LABEL}>Σύμβαση</label>
@@ -340,7 +315,7 @@ export default function EmployeeSheet({
             </p>
           </Section>
 
-          <Section title="Στοιχεία μισθοδοσίας">
+          <Section title="Στοιχεία για το αρχείο του λογιστή">
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className={LABEL}>Αρ. μητρώου</label>
@@ -352,17 +327,19 @@ export default function EmployeeSheet({
                   className={INPUT}
                 />
               </div>
-              <div className="flex-1">
-                <label className={LABEL}>Α.Φ.Μ</label>
-                <input
-                  value={form.payroll.afm ?? ""}
-                  onChange={(e) => setPayroll("afm", e.target.value)}
-                  placeholder="123456789"
-                  inputMode="numeric"
-                  maxLength={12}
-                  className={INPUT}
-                />
-              </div>
+              {showAfm && (
+                <div className="flex-1">
+                  <label className={LABEL}>Α.Φ.Μ</label>
+                  <input
+                    value={form.payroll.afm ?? ""}
+                    onChange={(e) => setPayroll("afm", e.target.value)}
+                    placeholder="123456789"
+                    inputMode="numeric"
+                    maxLength={12}
+                    className={INPUT}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <div className="flex-1">
@@ -382,16 +359,6 @@ export default function EmployeeSheet({
                   className={INPUT}
                 />
               </div>
-            </div>
-            <div>
-              <label className={LABEL}>ΑΜΚΑ</label>
-              <input
-                value={form.amka ?? ""}
-                onChange={(e) => set("amka", e.target.value)}
-                inputMode="numeric"
-                maxLength={11}
-                className={INPUT}
-              />
             </div>
           </Section>
 

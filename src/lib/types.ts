@@ -78,12 +78,9 @@ export interface StaffMember {
   fullName: string;
   departmentId: string | null;
   departmentName: string | null;
-  position: string | null;
   phone: string | null;
   email: string | null;
   hireDate: string | null;
-  birthDate: string | null;
-  amka: string | null;
   contractType: ContractType | null;
   weeklyHours: number | null;
   payType: PayType | null;
@@ -97,7 +94,10 @@ export interface StaffMember {
   payroll: PayrollFields;
 }
 
-/** Τα πεδία που χρειάζεται το αρχείο του λογιστή. */
+/**
+ * Τα πεδία που χρειάζεται το αρχείο του λογιστή.
+ * Το `afm` είναι στήλη του export — επεξεργάσιμο ΜΟΝΟ από την οθόνη του λογιστή.
+ */
 export interface PayrollFields {
   payrollId: string | null;
   afm: string | null;

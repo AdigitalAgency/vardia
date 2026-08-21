@@ -93,12 +93,9 @@ type EmployeeDetails = Omit<
 >;
 
 const EMPTY_DETAILS: EmployeeDetails = {
-  position: null,
   phone: null,
   email: null,
   hireDate: null,
-  birthDate: null,
-  amka: null,
   contractType: null,
   weeklyHours: null,
   payType: null,
@@ -114,7 +111,6 @@ function extractDetails(input: EmployeeInput): EmployeeDetails {
 const details: Record<string, EmployeeDetails> = {
   e04: {
     ...EMPTY_DETAILS,
-    position: "Σερβιτόρα",
     phone: "6971234567",
     contractType: "full",
     weeklyHours: 40,
@@ -124,7 +120,6 @@ const details: Record<string, EmployeeDetails> = {
   },
   e05: {
     ...EMPTY_DETAILS,
-    position: "Σερβιτόρος",
     contractType: "part",
     weeklyHours: 20,
     payType: "hourly",

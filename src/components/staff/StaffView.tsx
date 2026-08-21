@@ -49,9 +49,13 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
 
   useEffect(load, [load]);
 
+  // Ο owner νοιάζεται μόνο για τον αριθμό μητρώου· το ΑΦΜ είναι δουλειά του λογιστή.
   const incomplete = useMemo(
-    () => (staff ?? []).filter((m) => !m.payroll.afm || !m.payroll.payrollId).length,
-    [staff]
+    () =>
+      (staff ?? []).filter((m) =>
+        payrollOnly ? !m.payroll.afm || !m.payroll.payrollId : !m.payroll.payrollId
+      ).length,
+    [staff, payrollOnly]
   );
   const withoutAccess = useMemo(
     () => (staff ?? []).filter((m) => m.status === "active" && !m.hasAccess).length,
@@ -130,7 +134,7 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
           {incomplete > 0 && (
             <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-amber-800">
-              ⚠ {incomplete} χωρίς ΑΦΜ/μητρώο
+              ⚠ {incomplete} {payrollOnly ? "χωρίς ΑΦΜ/μητρώο" : "χωρίς αριθμό μητρώου"}
             </span>
           )}
           {!payrollOnly && withoutAccess > 0 && (
@@ -162,11 +166,12 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
                 <th className="px-3 py-2 text-left font-semibold">Εργαζόμενος</th>
-                <th className="px-2 py-2 text-left font-semibold">Πόστο</th>
                 <th className="px-2 py-2 text-left font-semibold">Σύμβαση</th>
                 <th className="px-2 py-2 text-right font-semibold">Ώρες/εβδ</th>
                 <th className="px-2 py-2 text-right font-semibold">Αμοιβή</th>
-                <th className="px-2 py-2 text-left font-semibold">ΑΜ / ΑΦΜ</th>
+                <th className="px-2 py-2 text-left font-semibold">
+                  {payrollOnly ? "ΑΜ / ΑΦΜ" : "Αρ. μητρώου"}
+                </th>
                 {!payrollOnly && (
                   <th className="px-3 py-2 text-center font-semibold">Πρόσβαση</th>
                 )}
@@ -192,7 +197,6 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
                       {m.departmentName ?? "—"}
                     </span>
                   </td>
-                  <td className="px-2 py-2 text-zinc-600">{m.position ?? "—"}</td>
                   <td className="px-2 py-2 text-zinc-600">
                     {m.contractType ? CONTRACT_LABELS[m.contractType] : "—"}
                   </td>
@@ -208,15 +212,17 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
                     )}
                   </td>
                   <td className="px-2 py-2 text-zinc-600">
-                    {m.payroll.payrollId || m.payroll.afm ? (
+                    {m.payroll.payrollId ? (
                       <>
-                        {m.payroll.payrollId ?? "—"}
-                        <span className="block text-[10px] text-zinc-400">
-                          {m.payroll.afm ?? "χωρίς ΑΦΜ"}
-                        </span>
+                        {m.payroll.payrollId}
+                        {payrollOnly && (
+                          <span className="block text-[10px] text-zinc-400">
+                            {m.payroll.afm ?? "χωρίς ΑΦΜ"}
+                          </span>
+                        )}
                       </>
                     ) : (
-                      <span className="text-amber-600">⚠ ελλιπή</span>
+                      <span className="text-amber-600">⚠ λείπει</span>
                     )}
                   </td>
                   {!payrollOnly && (
@@ -256,6 +262,7 @@ export default function StaffView({ repo, tenant, payrollOnly }: Props) {
         <EmployeeSheet
           member={editing}
           departments={departments}
+          showAfm={payrollOnly}
           onSave={save}
           onCreateAccount={
             editing && !payrollOnly

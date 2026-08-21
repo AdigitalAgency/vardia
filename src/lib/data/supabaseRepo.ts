@@ -59,12 +59,9 @@ function employeeColumns(input: EmployeeInput) {
   return {
     full_name: input.fullName.trim(),
     department_id: input.departmentId || null,
-    position: t(input.position),
     phone: t(input.phone),
     email: t(input.email),
     hire_date: input.hireDate || null,
-    birth_date: input.birthDate || null,
-    amka: t(input.amka),
     contract_type: input.contractType || null,
     weekly_hours: input.weeklyHours ?? null,
     pay_type: input.payType || null,
@@ -451,7 +448,7 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       let q = supabase
         .from("employees")
         .select(
-          "id, full_name, user_id, sort_order, status, afm, payroll_id, first_name, last_name, department_id, position, phone, email, hire_date, birth_date, amka, contract_type, weekly_hours, pay_type, pay_amount, notes, login_phone, departments(name)"
+          "id, full_name, user_id, sort_order, status, afm, payroll_id, first_name, last_name, department_id, phone, email, hire_date, contract_type, weekly_hours, pay_type, pay_amount, notes, login_phone, departments(name)"
         )
         .eq("tenant_id", tenantId)
         .order("sort_order");
@@ -465,12 +462,9 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
         fullName: e.full_name,
         departmentId: e.department_id,
         departmentName: (e.departments as unknown as { name: string } | null)?.name ?? null,
-        position: e.position,
         phone: e.phone,
         email: e.email,
         hireDate: e.hire_date,
-        birthDate: e.birth_date,
-        amka: e.amka,
         contractType: e.contract_type,
         weeklyHours: e.weekly_hours == null ? null : Number(e.weekly_hours),
         payType: e.pay_type,
