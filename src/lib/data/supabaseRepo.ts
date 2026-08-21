@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { EMPTY_CELL, type CellValue, type ShiftUsage, type WeekBundle } from "@/lib/types";
+import {
+  EMPTY_CELL,
+  type CellValue,
+  type EmployeeInput,
+  type ShiftUsage,
+  type WeekBundle,
+} from "@/lib/types";
 import { addDaysISO, mondayOf } from "@/lib/domain/week";
 import { slugify } from "@/lib/domain/slug";
 import type { ScheduleRepo } from "./repo";
@@ -45,6 +51,30 @@ async function loadCells(
     }
   }
   return cells;
+}
+
+/** Πεδία φόρμας → στήλες πίνακα. Τα κενά strings γίνονται null. */
+function employeeColumns(input: EmployeeInput) {
+  const t = (v: string | null | undefined) => v?.trim() || null;
+  return {
+    full_name: input.fullName.trim(),
+    department_id: input.departmentId || null,
+    position: t(input.position),
+    phone: t(input.phone),
+    email: t(input.email),
+    hire_date: input.hireDate || null,
+    birth_date: input.birthDate || null,
+    amka: t(input.amka),
+    contract_type: input.contractType || null,
+    weekly_hours: input.weeklyHours ?? null,
+    pay_type: input.payType || null,
+    pay_amount: input.payAmount ?? null,
+    notes: t(input.notes),
+    payroll_id: t(input.payroll.payrollId),
+    afm: t(input.payroll.afm),
+    first_name: t(input.payroll.firstName),
+    last_name: t(input.payroll.lastName),
+  };
 }
 
 export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
@@ -417,39 +447,39 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       }
     },
 
-    async listStaff(tenantId) {
-      const [emps, invites] = await Promise.all([
-        supabase
-          .from("employees")
-          .select(
-            "id, full_name, user_id, sort_order, afm, payroll_id, first_name, last_name, departments(name)"
-          )
-          .eq("tenant_id", tenantId)
-          .eq("status", "active")
-          .order("sort_order"),
-        supabase
-          .from("employee_invites")
-          .select("employee_id, token, expires_at")
-          .eq("tenant_id", tenantId)
-          .is("used_at", null),
-      ]);
-      if (emps.error) throw emps.error;
-      if (invites.error) throw invites.error;
+    async listStaff(tenantId, includeArchived = false) {
+      let q = supabase
+        .from("employees")
+        .select(
+          "id, full_name, user_id, sort_order, status, afm, payroll_id, first_name, last_name, department_id, position, phone, email, hire_date, birth_date, amka, contract_type, weekly_hours, pay_type, pay_amount, notes, login_phone, departments(name)"
+        )
+        .eq("tenant_id", tenantId)
+        .order("sort_order");
+      if (!includeArchived) q = q.eq("status", "active");
 
-      const now = Date.now();
-      const tokenByEmployee = new Map(
-        (invites.data ?? [])
-          .filter((i) => Date.parse(i.expires_at) > now)
-          .map((i) => [i.employee_id, i.token])
-      );
+      const { data, error } = await q;
+      if (error) throw error;
 
-      return (emps.data ?? []).map((e) => ({
+      return (data ?? []).map((e) => ({
         id: e.id,
         fullName: e.full_name,
-        departmentName:
-          (e.departments as unknown as { name: string } | null)?.name ?? null,
+        departmentId: e.department_id,
+        departmentName: (e.departments as unknown as { name: string } | null)?.name ?? null,
+        position: e.position,
+        phone: e.phone,
+        email: e.email,
+        hireDate: e.hire_date,
+        birthDate: e.birth_date,
+        amka: e.amka,
+        contractType: e.contract_type,
+        weeklyHours: e.weekly_hours == null ? null : Number(e.weekly_hours),
+        payType: e.pay_type,
+        payAmount: e.pay_amount == null ? null : Number(e.pay_amount),
+        notes: e.notes,
+        status: e.status,
+        sortOrder: e.sort_order,
         hasAccess: !!e.user_id,
-        pendingToken: tokenByEmployee.get(e.id) ?? null,
+        loginPhone: e.login_phone,
         payroll: {
           payrollId: e.payroll_id,
           afm: e.afm,
@@ -457,6 +487,54 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           lastName: e.last_name,
         },
       }));
+    },
+
+    async createEmployee(tenantId, input) {
+      const { data, error } = await supabase
+        .from("employees")
+        .insert({ tenant_id: tenantId, ...employeeColumns(input) })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data.id;
+    },
+
+    async updateEmployee(tenantId, employeeId, input) {
+      const { error } = await supabase
+        .from("employees")
+        .update(employeeColumns(input))
+        .eq("id", employeeId)
+        .eq("tenant_id", tenantId);
+      if (error) throw error;
+    },
+
+    async archiveEmployee(employeeId, archive) {
+      const { error } = await supabase.rpc("archive_employee", {
+        p_employee_id: employeeId,
+        p_archive: archive,
+      });
+      if (error) throw error;
+    },
+
+    async deleteEmployee(employeeId) {
+      const { error } = await supabase.rpc("delete_employee", { p_employee_id: employeeId });
+      if (error) {
+        throw new Error(
+          error.message.includes("HAS_SHIFTS")
+            ? "Ο εργαζόμενος έχει βάρδιες στο ιστορικό. Χρησιμοποίησε «Αρχειοθέτηση» ώστε να μη χαθεί το ιστορικό της μισθοδοσίας."
+            : error.message
+        );
+      }
+    },
+
+    async createEmployeeAccount(tenantId, employeeId, phone, pin) {
+      const res = await fetch("/api/staff/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, employeeId, phone, pin }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Απέτυχε η δημιουργία κωδικών.");
     },
 
     async updateEmployeePayroll(tenantId, employeeId, fields) {
@@ -530,26 +608,6 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       );
 
       return { employees, weeks };
-    },
-
-    async createInvite(tenantId, employeeId) {
-      const token = crypto.randomUUID().replace(/-/g, "");
-      const { data: user } = await supabase.auth.getUser();
-      // Ακυρώνουμε τυχόν παλιότερα αχρησιμοποίητα invites του ίδιου εργαζόμενου.
-      await supabase
-        .from("employee_invites")
-        .delete()
-        .eq("tenant_id", tenantId)
-        .eq("employee_id", employeeId)
-        .is("used_at", null);
-      const { error } = await supabase.from("employee_invites").insert({
-        tenant_id: tenantId,
-        employee_id: employeeId,
-        token,
-        created_by: user.user?.id ?? null,
-      });
-      if (error) throw error;
-      return token;
     },
 
     async createRoleInvite(tenantId, role) {

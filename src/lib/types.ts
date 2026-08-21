@@ -57,14 +57,43 @@ export interface ShiftUsage {
   count: number;
 }
 
+export type ContractType = "full" | "part" | "rotational";
+export type PayType = "hourly" | "daily" | "monthly";
+
+export const CONTRACT_LABELS: Record<ContractType, string> = {
+  full: "Πλήρης",
+  part: "Μερική",
+  rotational: "Εκ περιτροπής",
+};
+
+export const PAY_LABELS: Record<PayType, string> = {
+  hourly: "Ωρομίσθιο",
+  daily: "Ημερομίσθιο",
+  monthly: "Μηνιαίος",
+};
+
+/** Η πλήρης καρτέλα εργαζομένου, όπως τη διαχειρίζεται ο owner. */
 export interface StaffMember {
   id: string;
   fullName: string;
+  departmentId: string | null;
   departmentName: string | null;
-  /** true όταν το employee record έχει δεθεί με λογαριασμό */
+  position: string | null;
+  phone: string | null;
+  email: string | null;
+  hireDate: string | null;
+  birthDate: string | null;
+  amka: string | null;
+  contractType: ContractType | null;
+  weeklyHours: number | null;
+  payType: PayType | null;
+  payAmount: number | null;
+  notes: string | null;
+  status: string;
+  sortOrder: number;
+  /** true όταν η καρτέλα έχει δεθεί με λογαριασμό σύνδεσης */
   hasAccess: boolean;
-  /** ενεργό invite token, αν υπάρχει και δεν έχει χρησιμοποιηθεί */
-  pendingToken: string | null;
+  loginPhone: string | null;
   payroll: PayrollFields;
 }
 
@@ -75,6 +104,12 @@ export interface PayrollFields {
   firstName: string | null;
   lastName: string | null;
 }
+
+/** Τα επεξεργάσιμα πεδία της καρτέλας (ό,τι στέλνει η φόρμα). */
+export type EmployeeInput = Omit<
+  StaffMember,
+  "id" | "departmentName" | "hasAccess" | "loginPhone" | "status" | "sortOrder"
+>;
 
 export interface PeriodEmployee extends PayrollFields {
   id: string;

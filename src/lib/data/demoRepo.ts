@@ -3,6 +3,7 @@ import {
   type AppNotification,
   type CellValue,
   type LeaveRequest,
+  type EmployeeInput,
   type PayrollFields,
   type ShiftPreset,
   type ShiftUsage,
@@ -27,7 +28,14 @@ const DEPARTMENTS = [
   { id: "d4", name: "ΚΟΥΖΙΝΑ", sortOrder: 3 },
 ];
 
-const EMPLOYEES = [
+interface DemoEmployee {
+  id: string;
+  departmentId: string | null;
+  fullName: string;
+  sortOrder: number;
+}
+
+const EMPLOYEES: DemoEmployee[] = [
   { id: "e01", departmentId: "d1", fullName: "Ρόκκας", sortOrder: 0 },
   { id: "e02", departmentId: "d1", fullName: "Πάρης", sortOrder: 1 },
   { id: "e03", departmentId: "d1", fullName: "Ορέστης", sortOrder: 2 },
@@ -78,6 +86,55 @@ const payrollById: Record<string, PayrollFields> = {
   e04: { payrollId: "101", afm: "123456789", firstName: "Μαρία", lastName: "Τσιμπάνου" },
   e05: { payrollId: "104", afm: "234567891", firstName: "Νίκος", lastName: "Γιαννούλας" },
 };
+
+type EmployeeDetails = Omit<
+  EmployeeInput,
+  "fullName" | "departmentId" | "payroll"
+>;
+
+const EMPTY_DETAILS: EmployeeDetails = {
+  position: null,
+  phone: null,
+  email: null,
+  hireDate: null,
+  birthDate: null,
+  amka: null,
+  contractType: null,
+  weeklyHours: null,
+  payType: null,
+  payAmount: null,
+  notes: null,
+};
+
+function extractDetails(input: EmployeeInput): EmployeeDetails {
+  const { fullName: _n, departmentId: _d, payroll: _p, ...rest } = input;
+  return rest;
+}
+
+const details: Record<string, EmployeeDetails> = {
+  e04: {
+    ...EMPTY_DETAILS,
+    position: "Σερβιτόρα",
+    phone: "6971234567",
+    contractType: "full",
+    weeklyHours: 40,
+    payType: "monthly",
+    payAmount: 950,
+    hireDate: "2024-05-01",
+  },
+  e05: {
+    ...EMPTY_DETAILS,
+    position: "Σερβιτόρος",
+    contractType: "part",
+    weeklyHours: 20,
+    payType: "hourly",
+    payAmount: 6.5,
+  },
+};
+
+/** Ποιοι έχουν λογαριασμό (employeeId → κινητό σύνδεσης) και ποιοι αρχειοθετήθηκαν. */
+const accounts = new Map<string, string>([["e04", "6971234567"]]);
+const archived = new Set<string>();
 
 /** Μετρά ωράρια (preset ή custom) ανά εργαζόμενο — ό,τι κάνει και το SQL. */
 function bumpUsage(employeeId: string, cell: CellValue, delta = 1) {
@@ -277,25 +334,71 @@ export const demoRepo: ScheduleRepo = {
     // no-op στο demo
   },
 
-  async listStaff() {
-    return EMPLOYEES.map((e) => ({
+  async listStaff(_tenantId, includeArchived = false) {
+    return EMPLOYEES.filter((e) => includeArchived || !archived.has(e.id)).map((e) => ({
       id: e.id,
       fullName: e.fullName,
+      departmentId: e.departmentId,
       departmentName: DEPARTMENTS.find((d) => d.id === e.departmentId)?.name ?? null,
-      // Στο demo: οι δύο πρώτοι έχουν ήδη πρόσβαση, ένας έχει εκκρεμή πρόσκληση.
-      hasAccess: e.id === DEMO_EMPLOYEE_ID || e.id === "e14",
-      pendingToken: e.id === "e05" ? "demo-token-e05" : null,
+      status: archived.has(e.id) ? "archived" : "active",
+      sortOrder: e.sortOrder,
+      hasAccess: accounts.has(e.id),
+      loginPhone: accounts.get(e.id) ?? null,
       payroll: payrollById[e.id] ?? {
         payrollId: null,
         afm: null,
         firstName: null,
         lastName: null,
       },
+      ...(details[e.id] ?? EMPTY_DETAILS),
     }));
   },
 
-  async createInvite(_tenantId, employeeId) {
-    return `demo-token-${employeeId}`;
+  async createEmployee(_tenantId, input) {
+    const id = `e${EMPLOYEES.length + 1}${Math.floor(Date.now() % 1000)}`;
+    EMPLOYEES.push({
+      id,
+      departmentId: input.departmentId,
+      fullName: input.fullName,
+      sortOrder: EMPLOYEES.length,
+    });
+    details[id] = extractDetails(input);
+    payrollById[id] = { ...input.payroll };
+    return id;
+  },
+
+  async updateEmployee(_tenantId, employeeId, input) {
+    const emp = EMPLOYEES.find((e) => e.id === employeeId);
+    if (emp) {
+      emp.fullName = input.fullName;
+      emp.departmentId = input.departmentId;
+    }
+    details[employeeId] = extractDetails(input);
+    payrollById[employeeId] = { ...input.payroll };
+  },
+
+  async archiveEmployee(employeeId, archive) {
+    if (archive) archived.add(employeeId);
+    else archived.delete(employeeId);
+  },
+
+  async deleteEmployee(employeeId) {
+    const hasShifts = [...weeks.values()].some((w) =>
+      (w.cells[employeeId] ?? []).some((c) => c.kind !== "empty")
+    );
+    if (hasShifts) {
+      throw new Error(
+        "Ο εργαζόμενος έχει βάρδιες στο ιστορικό. Χρησιμοποίησε «Αρχειοθέτηση» ώστε να μη χαθεί το ιστορικό της μισθοδοσίας."
+      );
+    }
+    const i = EMPLOYEES.findIndex((e) => e.id === employeeId);
+    if (i >= 0) EMPLOYEES.splice(i, 1);
+    delete details[employeeId];
+    delete payrollById[employeeId];
+  },
+
+  async createEmployeeAccount(_tenantId, employeeId, phone) {
+    accounts.set(employeeId, phone);
   },
 
   async updateEmployeePayroll(_tenantId, employeeId, fields) {

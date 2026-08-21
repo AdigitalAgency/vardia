@@ -1,6 +1,7 @@
 import type {
   AppNotification,
   CellValue,
+  EmployeeInput,
   LeaveRequest,
   MyScheduleWeek,
   PayrollFields,
@@ -61,10 +62,24 @@ export interface ScheduleRepo {
     approve: boolean,
     note?: string
   ): Promise<void>;
-  /** Προσωπικό με κατάσταση πρόσβασης (για τη διαχείριση προσκλήσεων). */
-  listStaff(tenantId: string): Promise<StaffMember[]>;
-  /** Δημιουργεί (ή ανανεώνει) invite token για εργαζόμενο· επιστρέφει το token. */
-  createInvite(tenantId: string, employeeId: string): Promise<string>;
+  /** Το μητρώο προσωπικού. `includeArchived` για να φανούν και όσοι αποχώρησαν. */
+  listStaff(tenantId: string, includeArchived?: boolean): Promise<StaffMember[]>;
+  createEmployee(tenantId: string, input: EmployeeInput): Promise<string>;
+  updateEmployee(tenantId: string, employeeId: string, input: EmployeeInput): Promise<void>;
+  /** Αρχειοθέτηση/επαναφορά — το ιστορικό βαρδιών διατηρείται. */
+  archiveEmployee(employeeId: string, archive: boolean): Promise<void>;
+  /** Οριστική διαγραφή — επιτρέπεται μόνο αν δεν υπάρχει καμία βάρδια. */
+  deleteEmployee(employeeId: string): Promise<void>;
+  /**
+   * Δημιουργεί κωδικούς σύνδεσης για εργαζόμενο (ο owner τους δίνει ο ίδιος).
+   * Αν υπάρχει ήδη λογαριασμός, αλλάζει το PIN.
+   */
+  createEmployeeAccount(
+    tenantId: string,
+    employeeId: string,
+    phone: string,
+    pin: string
+  ): Promise<void>;
   /** Πρόσκληση λογιστή ή υπεύθυνου — χωρίς σύνδεση με καρτέλα εργαζομένου. */
   createRoleInvite(tenantId: string, role: "accountant" | "manager"): Promise<string>;
   updateEmployeePayroll(
