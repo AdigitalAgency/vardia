@@ -44,6 +44,12 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 3. **Custom domain** (προαιρετικό αλλά συνιστάται πριν σταλεί σε πελάτη): π.χ. `vardia.gr` ή `vardia.aidigitalagency.gr` — το `vardia-lac.vercel.app` δεν εμπνέει σε SMS πρόσκληση.
 4. **Web Push αποστολή** (προαιρετικό): το UI/SW/subscriptions είναι έτοιμα· λείπει το server-side send (VAPID keys + API route με service-role). Το in-app banner καλύπτει το v1 — το push είναι enhancement (PM §1.2-U2).
 
+## Owner UX — αποφάσεις που δεν ξανανοίγουν
+
+- **Προτεινόμενα ωράρια ΑΝΑ ΕΡΓΑΖΟΜΕΝΟ** (αίτημα Φώτη 2026-08-21): το `usage` μετράει **ωράρια (start/end)**, όχι preset ids — έτσι μαθαίνει και τα custom (π.χ. «05–02» του Ρόκκα) ισότιμα με τα presets του μαγαζιού. Το pad δείχνει «Συχνά του/της <όνομα>» (top-3, ≥2 χρήσεις ώστε μια τυχαία εξαίρεση να μην ανεβαίνει), μετά τα υπόλοιπα ωράρια ταξινομημένα κατά συχνότητα. ΡΕΠΟ/άδειες μένουν σε σταθερή θέση (μυϊκή μνήμη). Λογική: `src/lib/domain/suggestions.ts`.
+- **Αντιγραφή σε όλη την εβδομάδα**: ΟΧΙ drag & drop (απορρίφθηκε για mobile, UI spec §5.1). Δύο δρόμοι: (α) toggle «Όλη η εβδομάδα» στο pad — η επόμενη επιλογή γεμίζει 7/7 και το toggle σβήνει (one-shot)· (β) **long-press 450ms** (ή δεξί κλικ) σε γεμάτο κελί → confirm → αντιγραφή σε όλη τη γραμμή.
+- **Οι εγκεκριμένες άδειες ΔΕΝ πατιούνται ποτέ** από μαζική συμπλήρωση — είναι απόφαση, όχι πρόχειρο. Ο owner ενημερώνεται πόσες παραλείφθηκαν.
+
 ## v1 Scope (δεσμευτικό — τίποτα άλλο)
 
 Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδοποιήσεις · employee λίστα · leave requests · accountant export + ιστορικό · onboarding wizard 5 βημάτων · PWA + Web Push best-effort · invites SMS/Viber · guardrail 11ωρης ανάπαυσης (warning στο publish) · audit_log + shift_revisions.
@@ -64,4 +70,5 @@ Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδο
   ~~(α) migration 0005~~ ✅ ΕΓΙΝΕ (Φώτης).
 - 2026-08-21 (η): **🎉 v1 SCOPE COMPLETE.** migration 0006: trigger `log_shift_revision` (καταγράφει αλλαγές σε δημοσιευμένες εβδομάδες — θεμέλιο του diff), `publish_week` RPC (δημοσίευση + ειδοποιήσεις ΜΟΝΟ στους επηρεαζόμενους), `employee_invites.role` (πρόσκληση λογιστή/υπεύθυνου χωρίς καρτέλα). PWA: manifest, service worker (cache + push handlers), icons, registration μόνο σε production. Owner: feedback «ειδοποιήθηκαν Χ» + «Πρόσκληση λογιστή». Employee: in-app NotificationBanner. Invite page: 2 μορφές (κινητό+PIN / email+κωδικός). **Verified: 1η δημοσίευση 5 άτομα → αλλαγή ενός → «μόνο 1 άτομο που επηρεάστηκε».**
   ~~migration 0006~~ ✅ ΕΓΙΝΕ (Φώτης).
+- 2026-08-21 (ι): **Owner UX v1.1** (αίτημα Φώτη): προσωπικές προτάσεις ωραρίων ανά εργαζόμενο (μαθαίνει και τα custom) + αντιγραφή σε όλη την εβδομάδα (toggle στο pad + long-press στο κελί) + προστασία αδειών. 67 tests. Deployed. Βλ. «Owner UX — αποφάσεις».
 - 2026-08-21 (θ): **🚀 DEPLOYED** στο https://vardia-lac.vercel.app. Vercel project + env vars (3 περιβάλλοντα) + `turbopack.root` fix. Verified live: grid 19 γραμμές, 4 tabs owner, service worker registered, manifest standalone, RPC `invite_preview` απαντά από production (άρα env + migrations OK), `/app` → redirect σε login. Εκκρεμότητες: βλ. ενότητα «Εκκρεμότητες Φώτη».
