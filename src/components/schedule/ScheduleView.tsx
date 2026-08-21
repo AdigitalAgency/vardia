@@ -58,14 +58,9 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
     });
   }
 
-  function applyToSelected(value: CellValue, wholeWeek = false) {
+  function applyToSelected(value: CellValue) {
     if (!bundle || !selected || !tenant) return;
     const { employeeId, dayIndex } = selected;
-
-    if (wholeWeek) {
-      fillRow(employeeId, value);
-      return;
-    }
 
     setBundle((b) => {
       if (!b) return b;

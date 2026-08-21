@@ -10,7 +10,7 @@ interface Props {
   /** ιστορικό ωραρίων του επιλεγμένου εργαζόμενου */
   usage: ShiftUsage[] | undefined;
   employeeName: string;
-  onApply: (value: CellValue, wholeWeek: boolean) => void;
+  onApply: (value: CellValue) => void;
   onClear: () => void;
   onClose: () => void;
   selectionLabel: string;
@@ -28,21 +28,15 @@ export default function PresetPad({
   const [customOpen, setCustomOpen] = useState(false);
   const [customStart, setCustomStart] = useState("17:00");
   const [customEnd, setCustomEnd] = useState("01:00");
-  const [wholeWeek, setWholeWeek] = useState(false);
 
   const suggestions = personalSuggestions(usage, presets);
   const rest = orderedPresets(presets, usage, suggestions).filter((p) => p.kind === "work");
-
-  function apply(value: CellValue) {
-    onApply(value, wholeWeek);
-    if (wholeWeek) setWholeWeek(false); // one-shot: δεν κρατιέται κατά λάθος
-  }
 
   function applyCustom() {
     try {
       const start = parseHHMM(customStart.replace(":", ""));
       const end = parseHHMM(customEnd.replace(":", ""));
-      apply({ kind: "work", presetId: null, start, end });
+      onApply({ kind: "work", presetId: null, start, end });
       setCustomOpen(false);
     } catch {
       // τα <input type="time"> το αποτρέπουν ούτως ή άλλως
@@ -54,34 +48,13 @@ export default function PresetPad({
       <div className="mx-auto max-w-3xl">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="truncate text-sm font-medium text-zinc-600">{selectionLabel}</span>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              onClick={() => setWholeWeek((v) => !v)}
-              aria-pressed={wholeWeek}
-              className={`rounded-full px-3 py-1 text-xs font-bold ${
-                wholeWeek
-                  ? "bg-indigo-600 text-white"
-                  : "bg-zinc-100 text-zinc-600 active:bg-zinc-200"
-              }`}
-            >
-              {wholeWeek ? "✓ Όλη η εβδομάδα" : "Όλη η εβδομάδα"}
-            </button>
-            <button
-              onClick={onClose}
-              className="rounded-full px-2 py-1 text-sm font-medium text-zinc-400 active:bg-zinc-100"
-              aria-label="Κλείσιμο"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-full px-3 py-1 text-sm font-medium text-zinc-500 active:bg-zinc-100"
+          >
+            Κλείσιμο ✕
+          </button>
         </div>
-
-        {wholeWeek && (
-          <p className="mb-2 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs text-indigo-800">
-            Ό,τι διαλέξεις μπαίνει και στις 7 μέρες του/της {employeeName}. Οι εγκεκριμένες
-            άδειες μένουν ως έχουν.
-          </p>
-        )}
 
         {suggestions.length > 0 && (
           <div className="mb-2">
@@ -93,7 +66,7 @@ export default function PresetPad({
                 <button
                   key={`${s.start}-${s.end}`}
                   onClick={() =>
-                    apply({
+                    onApply({
                       kind: "work",
                       presetId: s.presetId,
                       start: s.start,
@@ -117,7 +90,7 @@ export default function PresetPad({
             <button
               key={p.id}
               onClick={() =>
-                apply({ kind: "work", presetId: p.id, start: p.start, end: p.end })
+                onApply({ kind: "work", presetId: p.id, start: p.start, end: p.end })
               }
               className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
                 suggestions.length
@@ -129,7 +102,7 @@ export default function PresetPad({
             </button>
           ))}
           <button
-            onClick={() => apply({ kind: "repo" })}
+            onClick={() => onApply({ kind: "repo" })}
             className="rounded-xl bg-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700 active:bg-zinc-300"
           >
             ΡΕΠΟ
@@ -137,7 +110,7 @@ export default function PresetPad({
           {LEAVE_TYPES.map((lt) => (
             <button
               key={lt.key}
-              onClick={() => apply({ kind: "adeia", leaveType: lt.key })}
+              onClick={() => onApply({ kind: "adeia", leaveType: lt.key })}
               className="rounded-xl bg-amber-100 px-4 py-2.5 text-sm font-semibold text-amber-800 active:bg-amber-200"
             >
               {lt.label}
@@ -194,9 +167,10 @@ export default function PresetPad({
         )}
 
         <p className="mt-2 text-xs text-zinc-400">
-          {wholeWeek
-            ? "Θα γεμίσει όλη η γραμμή με μία επιλογή."
-            : "Με κάθε επιλογή προχωράς αυτόματα στο επόμενο κελί. Κράτα πατημένο ένα κελί για αντιγραφή σε όλη την εβδομάδα."}
+          Με κάθε επιλογή προχωράς αυτόματα στο επόμενο κελί.{" "}
+          <span className="font-semibold text-zinc-500">
+            Κράτα πατημένο ένα κελί για αντιγραφή σε όλη την εβδομάδα.
+          </span>
         </p>
       </div>
     </div>
