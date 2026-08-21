@@ -28,7 +28,7 @@ Multi-tenant SaaS shift scheduling για ελληνική εστίαση. 3 ρ�
 Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά από tests πριν από commit.
 - `time.ts`: παρσάρισμα ωραρίων, διάρκεια, βάρδιες που περνούν μεσάνυχτα, νυχτερινές ώρες (22:00–06:00), split ανά ημερολογιακή ημέρα.
 - `export.ts`: weekly matrix λογιστή — 1 γραμμή/εργαζόμενο, στήλες ΑΜ|ΑΦΜ|ΕΠΩΝΥΜΟ|ΟΝΟΜΑ|ΔΕΥ…ΚΥΡ, κελιά `HHMMHHMM` / `ΑΝ` / label άδειας. Spec: LITTLEMOSQUE_BRAIN §5α.
-- ⚠ ΑΝΟΙΧΤΟ: κωδικοποίηση βάρδιας που περνά μεσάνυχτα στο export (π.χ. 17:00–01:00 → `17000100`;) — εκκρεμεί επιβεβαίωση από λογιστή. Μέχρι τότε: encoding με ώρα ρολογιού λήξης.
+- ✅ Midnight-crossing (επιβεβαιωμένο 2026-08-21): στο UI εμφανίζεται 17:00–01:00, στο export `17000100` **στην ημέρα έναρξης**.
 
 ## v1 Scope (δεσμευτικό — τίποτα άλλο)
 
@@ -37,4 +37,5 @@ Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδο
 
 ## Status / Επόμενα
 
-- 2026-08-21: Kickoff — scaffold, schema, domain core + tests. ⏳ Εκκρεμούν (Φώτης): Supabase project (EU), GitHub repo `AdigitalAgency/vardia` + push, Vercel project, call με λογιστή για midnight encoding.
+- 2026-08-21: Kickoff — scaffold, schema, domain core + tests (29/29).
+- 2026-08-21 (β): Supabase project ΕΤΟΙΜΟ (`qgugygrtdwcvsmbfytli`, `.env.local` γραμμένο — gitignored)· midnight encoding επιβεβαιωμένο. ⏳ Εκκρεμούν: (α) migration run — Φώτης: SQL Editor paste του `0001_init.sql` Ή db password για psql· (β) GitHub: Φώτης δημιουργεί κενό private repo `AdigitalAgency/vardia` → μετά `git push` (gh CLI δεν υπάρχει, credentials εκτός ορίων για AI)· (γ) Vercel project. Επόμενο build βήμα: auth flows + hybrid week grid + preset pad.

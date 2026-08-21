@@ -43,9 +43,8 @@ export const LEAVE_LABELS: Record<string, string> = {
 };
 
 /**
- * HHMMHHMM με ώρα ρολογιού λήξης — ΚΑΙ για βάρδιες που περνούν μεσάνυχτα
- * (17:00–01:00 → "17000100"). Εκκρεμεί επιβεβαίωση λογιστή για το
- * midnight-crossing (VARDIA_BRAIN «ΑΝΟΙΧΤΟ»)· το δείγμα του δεν είχε τέτοια περίπτωση.
+ * HHMMHHMM με ώρα ρολογιού λήξης — ΚΑΙ για βάρδιες που περνούν μεσάνυχτα:
+ * 17:00–01:00 → "17000100" στην ημέρα έναρξης (επιβεβαιωμένο από Φώτη 2026-08-21).
  */
 export function encodeCell(cell: ExportCell): string {
   switch (cell.kind) {
