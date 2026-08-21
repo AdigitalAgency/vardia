@@ -336,6 +336,134 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
       }
     },
 
+    async listStaff(tenantId) {
+      const [emps, invites] = await Promise.all([
+        supabase
+          .from("employees")
+          .select("id, full_name, user_id, sort_order, departments(name)")
+          .eq("tenant_id", tenantId)
+          .eq("status", "active")
+          .order("sort_order"),
+        supabase
+          .from("employee_invites")
+          .select("employee_id, token, expires_at")
+          .eq("tenant_id", tenantId)
+          .is("used_at", null),
+      ]);
+      if (emps.error) throw emps.error;
+      if (invites.error) throw invites.error;
+
+      const now = Date.now();
+      const tokenByEmployee = new Map(
+        (invites.data ?? [])
+          .filter((i) => Date.parse(i.expires_at) > now)
+          .map((i) => [i.employee_id, i.token])
+      );
+
+      return (emps.data ?? []).map((e) => ({
+        id: e.id,
+        fullName: e.full_name,
+        departmentName:
+          (e.departments as unknown as { name: string } | null)?.name ?? null,
+        hasAccess: !!e.user_id,
+        pendingToken: tokenByEmployee.get(e.id) ?? null,
+      }));
+    },
+
+    async createInvite(tenantId, employeeId) {
+      const token = crypto.randomUUID().replace(/-/g, "");
+      const { data: user } = await supabase.auth.getUser();
+      // Ακυρώνουμε τυχόν παλιότερα αχρησιμοποίητα invites του ίδιου εργαζόμενου.
+      await supabase
+        .from("employee_invites")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .is("used_at", null);
+      const { error } = await supabase.from("employee_invites").insert({
+        tenant_id: tenantId,
+        employee_id: employeeId,
+        token,
+        created_by: user.user?.id ?? null,
+      });
+      if (error) throw error;
+      return token;
+    },
+
+    async getMySchedule(tenantId, weekStart) {
+      const { data: me, error: eerr } = await supabase
+        .from("employees")
+        .select("id, full_name")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (eerr) throw eerr;
+      const empty = Array.from({ length: 7 }, () => ({ ...EMPTY_CELL }));
+      if (!me) {
+        return { weekStart, employeeName: "", published: false, cells: empty };
+      }
+
+      // Το RLS επιστρέφει schedule_weeks μόνο όταν είναι published.
+      const { data: week, error: werr } = await supabase
+        .from("schedule_weeks")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("week_start_date", weekStart)
+        .maybeSingle();
+      if (werr) throw werr;
+      if (!week) {
+        return { weekStart, employeeName: me.full_name, published: false, cells: empty };
+      }
+
+      const cells = await loadCells(supabase, week.id, weekStart, [me.id]);
+      return {
+        weekStart,
+        employeeName: me.full_name,
+        published: true,
+        cells: cells[me.id] ?? empty,
+      };
+    },
+
+    async listMyLeaveRequests(tenantId) {
+      const { data, error } = await supabase
+        .from("leave_requests")
+        .select("id, employee_id, type, date_from, date_to, comment, status, decision_note, created_at")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        id: r.id,
+        employeeId: r.employee_id,
+        employeeName: "",
+        type: r.type,
+        dateFrom: r.date_from,
+        dateTo: r.date_to,
+        comment: r.comment,
+        status: r.status,
+        decisionNote: r.decision_note,
+        createdAt: r.created_at,
+      }));
+    },
+
+    async createLeaveRequest(tenantId, input) {
+      const { data: me, error: eerr } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (eerr) throw eerr;
+      if (!me) throw new Error("Δεν βρέθηκε καρτέλα εργαζόμενου.");
+      const { error } = await supabase.from("leave_requests").insert({
+        tenant_id: tenantId,
+        employee_id: me.id,
+        type: input.type,
+        date_from: input.dateFrom,
+        date_to: input.dateTo,
+        comment: input.comment ?? null,
+        status: "pending",
+      });
+      if (error) throw error;
+    },
+
     async publish(_tenantId, weekId) {
       const { data: user } = await supabase.auth.getUser();
       const { error } = await supabase

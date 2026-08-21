@@ -5,6 +5,9 @@ import {
   type ShiftPreset,
   type WeekBundle,
 } from "@/lib/types";
+
+/** Ποιον εργαζόμενο «παίζει» το /demo/employee. */
+const DEMO_EMPLOYEE_ID = "e04";
 import { addDaysISO, mondayOf } from "@/lib/domain/week";
 import type { ScheduleRepo } from "./repo";
 
@@ -175,6 +178,56 @@ export const demoRepo: ScheduleRepo = {
   async publish(_tenantId, weekId) {
     const week = [...weeks.values()].find((w) => w.weekId === weekId);
     if (week) week.status = "published";
+  },
+
+  async listStaff() {
+    return EMPLOYEES.map((e) => ({
+      id: e.id,
+      fullName: e.fullName,
+      departmentName: DEPARTMENTS.find((d) => d.id === e.departmentId)?.name ?? null,
+      // Στο demo: οι δύο πρώτοι έχουν ήδη πρόσβαση, ένας έχει εκκρεμή πρόσκληση.
+      hasAccess: e.id === DEMO_EMPLOYEE_ID || e.id === "e14",
+      pendingToken: e.id === "e05" ? "demo-token-e05" : null,
+    }));
+  },
+
+  async createInvite(_tenantId, employeeId) {
+    return `demo-token-${employeeId}`;
+  },
+
+  async getMySchedule(_tenantId, weekStart) {
+    seedOnce(weekStart);
+    const w = getOrCreate(weekStart);
+    const emp = EMPLOYEES.find((e) => e.id === DEMO_EMPLOYEE_ID)!;
+    const published = w.status !== "draft";
+    return {
+      weekStart,
+      employeeName: emp.fullName,
+      published,
+      cells: published
+        ? structuredClone(w.cells[DEMO_EMPLOYEE_ID])
+        : Array.from({ length: 7 }, () => ({ ...EMPTY_CELL })),
+    };
+  },
+
+  async listMyLeaveRequests() {
+    return structuredClone(leaveRequests.filter((r) => r.employeeId === DEMO_EMPLOYEE_ID));
+  },
+
+  async createLeaveRequest(_tenantId, input) {
+    const emp = EMPLOYEES.find((e) => e.id === DEMO_EMPLOYEE_ID)!;
+    leaveRequests.unshift({
+      id: `lr${leaveRequests.length + 1}`,
+      employeeId: emp.id,
+      employeeName: emp.fullName,
+      type: input.type,
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      comment: input.comment ?? null,
+      status: "pending",
+      decisionNote: null,
+      createdAt: new Date().toISOString(),
+    });
   },
 
   async listLeaveRequests() {

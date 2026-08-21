@@ -47,6 +47,26 @@ export interface WeekBundle {
   presetUsage: Record<string, Record<string, number>>;
 }
 
+export interface StaffMember {
+  id: string;
+  fullName: string;
+  departmentName: string | null;
+  /** true όταν το employee record έχει δεθεί με λογαριασμό */
+  hasAccess: boolean;
+  /** ενεργό invite token, αν υπάρχει και δεν έχει χρησιμοποιηθεί */
+  pendingToken: string | null;
+}
+
+/** Το πρόγραμμα ενός εργαζόμενου για μία εβδομάδα (employee view). */
+export interface MyScheduleWeek {
+  weekStart: string;
+  employeeName: string;
+  /** null όταν η εβδομάδα δεν έχει δημοσιευτεί ακόμα */
+  published: boolean;
+  /** 7 κελιά (index 0 = Δευτέρα)· κενά όταν δεν είναι published */
+  cells: CellValue[];
+}
+
 export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export interface LeaveRequest {

@@ -1,8 +1,8 @@
 "use client";
 
-import OwnerShell from "@/components/OwnerShell";
+import RoleRouter from "@/components/RoleRouter";
 import { demoRepo } from "@/lib/data/demoRepo";
 
 export default function DemoPage() {
-  return <OwnerShell repo={demoRepo} demoBadge />;
+  return <RoleRouter repo={demoRepo} demoBadge />;
 }
