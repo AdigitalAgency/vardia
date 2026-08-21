@@ -30,11 +30,19 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 - `export.ts`: weekly matrix λογιστή — 1 γραμμή/εργαζόμενο, στήλες ΑΜ|ΑΦΜ|ΕΠΩΝΥΜΟ|ΟΝΟΜΑ|ΔΕΥ…ΚΥΡ, κελιά `HHMMHHMM` / `ΑΝ` / label άδειας. Spec: LITTLEMOSQUE_BRAIN §5α.
 - ✅ Midnight-crossing (επιβεβαιωμένο 2026-08-21): στο UI εμφανίζεται 17:00–01:00, στο export `17000100` **στην ημέρα έναρξης**.
 
+## 🚀 LIVE
+
+**Production: https://vardia-lac.vercel.app** (Vercel project `kious-projects-69a8135d/vardia`, deploy 2026-08-21)
+· `/demo` = παρουσίαση χωρίς login (4 ρόλοι στη μπάρα) · `/app` = πραγματικό (login)
+· Env σε production/preview/development: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+· PWA ενεργό (service worker registered, installable)
+
 ## ⚠ Εκκρεμότητες Φώτη (πριν τον πιλότο)
 
-1. **Supabase → Authentication → Providers → Email: «Confirm email» OFF** — ΧΩΡΙΣ ΑΥΤΟ δεν ολοκληρώνονται οι προσκλήσεις εργαζομένων (ψευδο-email `<κινητό>@employee.vardia.app`, δεν υπάρχει inbox).
-2. **Vercel project**: import repo `AdigitalAgency/vardia`, env `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Το PWA/service worker θέλει HTTPS — δουλεύει μόνο μετά το deploy (στο localhost το SW είναι σκόπιμα ανενεργό).
-3. **Web Push αποστολή** (προαιρετικό): το UI/SW/subscriptions είναι έτοιμα· λείπει το server-side send (VAPID keys + API route με service-role). Το in-app banner καλύπτει το v1 — το push είναι enhancement (PM §1.2-U2).
+1. **Supabase → Authentication → Providers → Email: «Confirm email» OFF** — ΧΩΡΙΣ ΑΥΤΟ δεν ολοκληρώνονται οι προσκλήσεις εργαζομένων (ψευδο-email `<κινητό>@employee.vardia.app`, δεν υπάρχει inbox). **Το #1 blocker.**
+2. **Supabase → Authentication → URL Configuration**: Site URL = `https://vardia-lac.vercel.app`, Redirect URLs += `https://vardia-lac.vercel.app/**`. Χωρίς αυτό τα magic links («σύνδεση με link στο email») οδηγούν στο localhost.
+3. **Custom domain** (προαιρετικό αλλά συνιστάται πριν σταλεί σε πελάτη): π.χ. `vardia.gr` ή `vardia.aidigitalagency.gr` — το `vardia-lac.vercel.app` δεν εμπνέει σε SMS πρόσκληση.
+4. **Web Push αποστολή** (προαιρετικό): το UI/SW/subscriptions είναι έτοιμα· λείπει το server-side send (VAPID keys + API route με service-role). Το in-app banner καλύπτει το v1 — το push είναι enhancement (PM §1.2-U2).
 
 ## v1 Scope (δεσμευτικό — τίποτα άλλο)
 
@@ -55,4 +63,5 @@ Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδο
 - 2026-08-21 (ζ): **Onboarding wizard ΥΛΟΠΟΙΗΘΗΚΕ + verified** — ο wizard ΕΙΝΑΙ το provisioning (§2.4): migration 0005 `provision_tenant` RPC (tenant+owner membership+τμήματα+προσωπικό+presets σε μία συναλλαγή, μοναδικό slug, όριο 10/user, audit entry), SetupWizard 5 βημάτων με defaults εστίασης και μαζική εισαγωγή ονομάτων, `slug.ts` με ελληνικό transliteration, `/app/setup` (2ο κατάστημα) + `/demo/setup`. Χωρίς tenant → ο wizard είναι η πρώτη οθόνη. 59 tests.
   ~~(α) migration 0005~~ ✅ ΕΓΙΝΕ (Φώτης).
 - 2026-08-21 (η): **🎉 v1 SCOPE COMPLETE.** migration 0006: trigger `log_shift_revision` (καταγράφει αλλαγές σε δημοσιευμένες εβδομάδες — θεμέλιο του diff), `publish_week` RPC (δημοσίευση + ειδοποιήσεις ΜΟΝΟ στους επηρεαζόμενους), `employee_invites.role` (πρόσκληση λογιστή/υπεύθυνου χωρίς καρτέλα). PWA: manifest, service worker (cache + push handlers), icons, registration μόνο σε production. Owner: feedback «ειδοποιήθηκαν Χ» + «Πρόσκληση λογιστή». Employee: in-app NotificationBanner. Invite page: 2 μορφές (κινητό+PIN / email+κωδικός). **Verified: 1η δημοσίευση 5 άτομα → αλλαγή ενός → «μόνο 1 άτομο που επηρεάστηκε».**
-  ⏳ Εκκρεμούν: **migration 0006** + οι 3 εκκρεμότητες στην ενότητα «Εκκρεμότητες Φώτη» παραπάνω.
+  ~~migration 0006~~ ✅ ΕΓΙΝΕ (Φώτης).
+- 2026-08-21 (θ): **🚀 DEPLOYED** στο https://vardia-lac.vercel.app. Vercel project + env vars (3 περιβάλλοντα) + `turbopack.root` fix. Verified live: grid 19 γραμμές, 4 tabs owner, service worker registered, manifest standalone, RPC `invite_preview` απαντά από production (άρα env + migrations OK), `/app` → redirect σε login. Εκκρεμότητες: βλ. ενότητα «Εκκρεμότητες Φώτη».
