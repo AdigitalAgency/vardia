@@ -10,6 +10,7 @@ import PresetPad from "./PresetPad";
 
 interface Props {
   repo: ScheduleRepo;
+  tenant: TenantInfo;
   demoBadge?: boolean;
 }
 
@@ -18,21 +19,12 @@ interface Selection {
   dayIndex: number;
 }
 
-export default function ScheduleView({ repo, demoBadge }: Props) {
-  const [tenant, setTenant] = useState<TenantInfo | null>(null);
-  const [noTenant, setNoTenant] = useState(false);
+export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [bundle, setBundle] = useState<WeekBundle | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    repo
-      .getTenants()
-      .then((ts) => (ts.length ? setTenant(ts[0]) : setNoTenant(true)))
-      .catch((e) => setError(String(e?.message ?? e)));
-  }, [repo]);
 
   const loadWeek = useCallback(() => {
     if (!tenant) return;
@@ -62,11 +54,31 @@ export default function ScheduleView({ repo, demoBadge }: Props) {
       const status = b.status === "published" ? "published_dirty" : b.status;
       return { ...b, cells, status };
     });
+    if (value.kind === "work" && value.presetId) {
+      // Τοπικό bump ώστε η σειρά του pad να προσαρμόζεται αμέσως.
+      setBundle((b) => {
+        if (!b) return b;
+        const usage = { ...b.presetUsage, [employeeId]: { ...(b.presetUsage[employeeId] ?? {}) } };
+        usage[employeeId][value.presetId!] = (usage[employeeId][value.presetId!] ?? 0) + 1;
+        return { ...b, presetUsage: usage };
+      });
+    }
     repo
       .setCell(tenant.id, bundle.weekId, employeeId, dayIndex, value)
       .catch((e) => setError("Η αποθήκευση απέτυχε: " + String(e?.message ?? e)));
     advance();
   }
+
+  /** Presets ταξινομημένα με τη συχνότητα χρήσης του επιλεγμένου εργαζόμενου. */
+  const presetsForSelected = useMemo(() => {
+    if (!bundle) return [];
+    if (!selected) return bundle.presets;
+    const usage = bundle.presetUsage[selected.employeeId] ?? {};
+    return [...bundle.presets].sort((a, b) => {
+      if (a.kind !== "work" || b.kind !== "work") return a.sortOrder - b.sortOrder;
+      return (usage[b.id] ?? 0) - (usage[a.id] ?? 0) || a.sortOrder - b.sortOrder;
+    });
+  }, [bundle, selected]);
 
   /** Auto-advance: επόμενη ημέρα ίδιου εργαζόμενου· μετά την Κυριακή, επόμενος εργαζόμενος. */
   function advance() {
@@ -116,18 +128,6 @@ export default function ScheduleView({ repo, demoBadge }: Props) {
     } finally {
       setBusy(false);
     }
-  }
-
-  if (noTenant) {
-    return (
-      <div className="mx-auto max-w-md p-8 text-center text-zinc-600">
-        <h1 className="mb-2 text-lg font-bold">Δεν βρέθηκε κατάστημα</h1>
-        <p className="text-sm">
-          Ο λογαριασμός σου δεν είναι συνδεδεμένος με κάποιο κατάστημα. Μίλησε με τον
-          διαχειριστή σου.
-        </p>
-      </div>
-    );
   }
 
   const selectionLabel = (() => {
@@ -222,7 +222,7 @@ export default function ScheduleView({ repo, demoBadge }: Props) {
 
       {bundle && selected && (
         <PresetPad
-          presets={bundle.presets}
+          presets={presetsForSelected}
           selectionLabel={selectionLabel}
           onApply={applyToSelected}
           onClear={() => applyToSelected({ ...EMPTY_CELL })}

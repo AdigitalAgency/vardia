@@ -43,6 +43,24 @@ export interface WeekBundle {
   presets: ShiftPreset[];
   /** employeeId → 7 κελιά (index 0 = Δευτέρα) */
   cells: Record<string, CellValue[]>;
+  /** employeeId → presetId → πλήθος χρήσεων (all-time) — για δυναμική σειρά στο preset pad */
+  presetUsage: Record<string, Record<string, number>>;
+}
+
+export type LeaveRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  /** leave type key (kanoniki/patrotita/…) ή "repo" */
+  type: string;
+  dateFrom: string; // ISO
+  dateTo: string; // ISO
+  comment: string | null;
+  status: LeaveRequestStatus;
+  decisionNote: string | null;
+  createdAt: string;
 }
 
 export interface TenantInfo {

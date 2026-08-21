@@ -1,5 +1,11 @@
-import { EMPTY_CELL, type CellValue, type ShiftPreset, type WeekBundle } from "@/lib/types";
-import { addDaysISO } from "@/lib/domain/week";
+import {
+  EMPTY_CELL,
+  type CellValue,
+  type LeaveRequest,
+  type ShiftPreset,
+  type WeekBundle,
+} from "@/lib/types";
+import { addDaysISO, mondayOf } from "@/lib/domain/week";
 import type { ScheduleRepo } from "./repo";
 
 /**
@@ -52,6 +58,15 @@ interface DemoWeek {
 }
 
 const weeks = new Map<string, DemoWeek>();
+const presetUsage: Record<string, Record<string, number>> = {};
+const leaveRequests: LeaveRequest[] = [];
+let seeded = false;
+
+function bumpUsage(employeeId: string, presetId: string | null | undefined, delta = 1) {
+  if (!presetId) return;
+  presetUsage[employeeId] ??= {};
+  presetUsage[employeeId][presetId] = (presetUsage[employeeId][presetId] ?? 0) + delta;
+}
 
 function emptyCells(): Record<string, CellValue[]> {
   return Object.fromEntries(
@@ -61,10 +76,10 @@ function emptyCells(): Record<string, CellValue[]> {
 
 function seedWeek(weekStart: string): DemoWeek {
   const cells = emptyCells();
-  // Ενδεικτικό γέμισμα από το χαρτί ώστε το demo να μη δείχνει άδειο.
   const set = (emp: string, day: number, presetId: string) => {
     const p = PRESETS.find((x) => x.id === presetId)!;
     cells[emp][day] = { kind: p.kind, presetId: p.id, start: p.start, end: p.end };
+    bumpUsage(emp, p.kind === "work" ? p.id : null);
   };
   for (let d = 0; d < 7; d++) set("e04", d, d === 4 || d === 6 ? "p8" : "p1");
   for (let d = 0; d < 7; d++) set("e05", d, d === 1 ? "p8" : "p2");
@@ -74,18 +89,47 @@ function seedWeek(weekStart: string): DemoWeek {
   return { weekId: `w-${weekStart}`, weekStart, status: "draft", cells };
 }
 
-function getOrCreate(weekStart: string, seed: boolean): DemoWeek {
+function seedOnce(weekStart: string) {
+  if (seeded) return;
+  seeded = true;
+  weeks.set(weekStart, seedWeek(weekStart));
+  // Δύο pending αιτήματα ώστε το tab «Αιτήματα» να έχει περιεχόμενο στο demo.
+  leaveRequests.push(
+    {
+      id: "lr1",
+      employeeId: "e08",
+      employeeName: "Ντέρη",
+      type: "kanoniki",
+      dateFrom: addDaysISO(weekStart, 11),
+      dateTo: addDaysISO(weekStart, 13),
+      comment: "Γάμος αδερφής",
+      status: "pending",
+      decisionNote: null,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "lr2",
+      employeeId: "e14",
+      employeeName: "Μακρής",
+      type: "repo",
+      dateFrom: addDaysISO(weekStart, 8),
+      dateTo: addDaysISO(weekStart, 8),
+      comment: null,
+      status: "pending",
+      decisionNote: null,
+      createdAt: new Date().toISOString(),
+    }
+  );
+}
+
+function getOrCreate(weekStart: string): DemoWeek {
   let w = weeks.get(weekStart);
   if (!w) {
-    w = seed
-      ? seedWeek(weekStart)
-      : { weekId: `w-${weekStart}`, weekStart, status: "draft", cells: emptyCells() };
+    w = { weekId: `w-${weekStart}`, weekStart, status: "draft", cells: emptyCells() };
     weeks.set(weekStart, w);
   }
   return w;
 }
-
-let firstLoad = true;
 
 export const demoRepo: ScheduleRepo = {
   async getTenants() {
@@ -93,8 +137,8 @@ export const demoRepo: ScheduleRepo = {
   },
 
   async getWeek(_tenantId, weekStart) {
-    const w = getOrCreate(weekStart, firstLoad);
-    firstLoad = false;
+    seedOnce(weekStart);
+    const w = getOrCreate(weekStart);
     return {
       weekId: w.weekId,
       weekStart: w.weekStart,
@@ -103,6 +147,7 @@ export const demoRepo: ScheduleRepo = {
       employees: EMPLOYEES,
       presets: PRESETS,
       cells: structuredClone(w.cells),
+      presetUsage: structuredClone(presetUsage),
     };
   },
 
@@ -110,12 +155,13 @@ export const demoRepo: ScheduleRepo = {
     const week = [...weeks.values()].find((w) => w.weekId === weekId);
     if (!week) return;
     week.cells[employeeId][dayIndex] = value;
+    if (value.kind === "work") bumpUsage(employeeId, value.presetId);
     if (week.status === "published") week.status = "published_dirty";
   },
 
   async copyPreviousWeek(_tenantId, _weekId, weekStart) {
-    const prev = getOrCreate(addDaysISO(weekStart, -7), true);
-    const cur = getOrCreate(weekStart, false);
+    const prev = getOrCreate(addDaysISO(weekStart, -7));
+    const cur = getOrCreate(weekStart);
     // Μόνο το εργασιακό μοτίβο μεταφέρεται — οι άδειες δεν αντιγράφονται.
     cur.cells = Object.fromEntries(
       Object.entries(prev.cells).map(([emp, row]) => [
@@ -127,7 +173,33 @@ export const demoRepo: ScheduleRepo = {
   },
 
   async publish(_tenantId, weekId) {
-    const week = [...weeks.values()].find((w) => `w-${w.weekStart}` === weekId);
+    const week = [...weeks.values()].find((w) => w.weekId === weekId);
     if (week) week.status = "published";
+  },
+
+  async listLeaveRequests() {
+    return structuredClone(leaveRequests).sort((a, b) =>
+      a.status === "pending" === (b.status === "pending")
+        ? b.createdAt.localeCompare(a.createdAt)
+        : a.status === "pending"
+          ? -1
+          : 1
+    );
+  },
+
+  async decideLeaveRequest(_tenantId, requestId, approve, note) {
+    const req = leaveRequests.find((r) => r.id === requestId);
+    if (!req || req.status !== "pending") return;
+    req.status = approve ? "approved" : "rejected";
+    req.decisionNote = note ?? null;
+    if (!approve) return;
+    // Auto-fill: κάθε ημέρα του αιτήματος γίνεται ΑΔΕΙΑ/ΡΕΠΟ στο πρόγραμμα.
+    for (let d = req.dateFrom; d <= req.dateTo; d = addDaysISO(d, 1)) {
+      const week = getOrCreate(mondayOf(new Date(`${d}T00:00:00Z`)));
+      const dayIndex = Math.round((Date.parse(d) - Date.parse(week.weekStart)) / 86400000);
+      week.cells[req.employeeId][dayIndex] =
+        req.type === "repo" ? { kind: "repo" } : { kind: "adeia", leaveType: req.type };
+      if (week.status === "published") week.status = "published_dirty";
+    }
   },
 };

@@ -1,8 +1,8 @@
 "use client";
 
-import ScheduleView from "@/components/schedule/ScheduleView";
+import OwnerShell from "@/components/OwnerShell";
 import { demoRepo } from "@/lib/data/demoRepo";
 
 export default function DemoPage() {
-  return <ScheduleView repo={demoRepo} demoBadge />;
+  return <OwnerShell repo={demoRepo} demoBadge />;
 }

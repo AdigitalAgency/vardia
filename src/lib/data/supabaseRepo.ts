@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EMPTY_CELL, type CellValue, type WeekBundle } from "@/lib/types";
-import { addDaysISO } from "@/lib/domain/week";
+import { addDaysISO, mondayOf } from "@/lib/domain/week";
 import type { ScheduleRepo } from "./repo";
 
 function cellFromShiftRow(row: {
@@ -105,6 +105,22 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
         if (r.error) throw r.error;
       }
 
+      // Συχνότητα χρήσης preset ανά εργαζόμενο (all-time) — δυναμική σειρά στο pad.
+      const { data: usageRows, error: uerr } = await supabase
+        .from("shifts")
+        .select("employee_id, preset_id")
+        .eq("tenant_id", tenantId)
+        .eq("kind", "work")
+        .not("preset_id", "is", null)
+        .limit(20000);
+      if (uerr) throw uerr;
+      const presetUsage: Record<string, Record<string, number>> = {};
+      for (const r of usageRows ?? []) {
+        presetUsage[r.employee_id] ??= {};
+        presetUsage[r.employee_id][r.preset_id!] =
+          (presetUsage[r.employee_id][r.preset_id!] ?? 0) + 1;
+      }
+
       const employeeList = (employees.data ?? []).map((e) => ({
         id: e.id,
         departmentId: e.department_id,
@@ -131,6 +147,7 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           sortOrder: p.sort_order,
         })),
         cells: await loadCells(supabase, week.id, weekStart, employeeList.map((e) => e.id)),
+        presetUsage,
       } satisfies WeekBundle;
     },
 
@@ -223,6 +240,100 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
         }
       }
       return this.getWeek(tenantId, weekStart);
+    },
+
+    async listLeaveRequests(tenantId) {
+      const { data, error } = await supabase
+        .from("leave_requests")
+        .select(
+          "id, employee_id, type, date_from, date_to, comment, status, decision_note, created_at, employees(full_name)"
+        )
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? [])
+        .map((r) => ({
+          id: r.id,
+          employeeId: r.employee_id,
+          employeeName:
+            (r.employees as unknown as { full_name: string } | null)?.full_name ?? "—",
+          type: r.type,
+          dateFrom: r.date_from,
+          dateTo: r.date_to,
+          comment: r.comment,
+          status: r.status,
+          decisionNote: r.decision_note,
+          createdAt: r.created_at,
+        }))
+        .sort((a, b) =>
+          (a.status === "pending") === (b.status === "pending")
+            ? b.createdAt.localeCompare(a.createdAt)
+            : a.status === "pending"
+              ? -1
+              : 1
+        );
+    },
+
+    async decideLeaveRequest(tenantId, requestId, approve, note) {
+      const { data: user } = await supabase.auth.getUser();
+      const { data: req, error } = await supabase
+        .from("leave_requests")
+        .update({
+          status: approve ? "approved" : "rejected",
+          decided_by: user.user?.id ?? null,
+          decided_at: new Date().toISOString(),
+          decision_note: note ?? null,
+        })
+        .eq("id", requestId)
+        .eq("tenant_id", tenantId)
+        .eq("status", "pending")
+        .select("employee_id, type, date_from, date_to")
+        .single();
+      if (error) throw error;
+      if (!approve || !req) return;
+
+      // Auto-fill στο πρόγραμμα: κάθε ημέρα του αιτήματος → ΑΔΕΙΑ/ΡΕΠΟ.
+      for (let d = req.date_from; d <= req.date_to; d = addDaysISO(d, 1)) {
+        const weekStart = mondayOf(new Date(`${d}T00:00:00Z`));
+        let { data: week } = await supabase
+          .from("schedule_weeks")
+          .select("id, status")
+          .eq("tenant_id", tenantId)
+          .eq("week_start_date", weekStart)
+          .maybeSingle();
+        if (!week) {
+          const { data: created, error: cerr } = await supabase
+            .from("schedule_weeks")
+            .insert({ tenant_id: tenantId, week_start_date: weekStart, status: "draft" })
+            .select("id, status")
+            .single();
+          if (cerr) throw cerr;
+          week = created;
+        }
+        const { error: serr } = await supabase.from("shifts").upsert(
+          {
+            tenant_id: tenantId,
+            week_id: week.id,
+            employee_id: req.employee_id,
+            date: d,
+            kind: req.type === "repo" ? "repo" : "adeia",
+            preset_id: null,
+            start_time: null,
+            end_time: null,
+            crosses_midnight: false,
+            leave_type: req.type === "repo" ? null : req.type,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "week_id,employee_id,date" }
+        );
+        if (serr) throw serr;
+        if (week.status === "published") {
+          await supabase
+            .from("schedule_weeks")
+            .update({ status: "published_dirty" })
+            .eq("id", week.id);
+        }
+      }
     },
 
     async publish(_tenantId, weekId) {

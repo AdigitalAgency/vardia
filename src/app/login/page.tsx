@@ -56,7 +56,7 @@ function LoginForm() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
           />
           {mode === "password" && (
             <input
@@ -65,7 +65,7 @@ function LoginForm() {
               placeholder="Κωδικός"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
             />
           )}
           <button

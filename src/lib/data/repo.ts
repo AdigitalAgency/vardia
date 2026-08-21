@@ -1,4 +1,4 @@
-import type { CellValue, TenantInfo, WeekBundle } from "@/lib/types";
+import type { CellValue, LeaveRequest, TenantInfo, WeekBundle } from "@/lib/types";
 
 /**
  * Το UI μιλάει ΜΟΝΟ σε αυτό το interface. Υλοποιήσεις: SupabaseRepo (πραγματικά
@@ -18,4 +18,15 @@ export interface ScheduleRepo {
   /** Αντιγράφει τα κελιά της προηγούμενης εβδομάδας στην τρέχουσα (draft). */
   copyPreviousWeek(tenantId: string, weekId: string, weekStart: string): Promise<WeekBundle>;
   publish(tenantId: string, weekId: string): Promise<void>;
+  listLeaveRequests(tenantId: string): Promise<LeaveRequest[]>;
+  /**
+   * Έγκριση/απόρριψη αιτήματος. Στην έγκριση, οι αντίστοιχες ημέρες
+   * συμπληρώνονται αυτόματα στο πρόγραμμα (ΑΔΕΙΑ/ΡΕΠΟ).
+   */
+  decideLeaveRequest(
+    tenantId: string,
+    requestId: string,
+    approve: boolean,
+    note?: string
+  ): Promise<void>;
 }
