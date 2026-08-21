@@ -30,6 +30,12 @@ Pure functions + unit tests (vitest). ΚΑΘΕ αλλαγή εδώ περνά α
 - `export.ts`: weekly matrix λογιστή — 1 γραμμή/εργαζόμενο, στήλες ΑΜ|ΑΦΜ|ΕΠΩΝΥΜΟ|ΟΝΟΜΑ|ΔΕΥ…ΚΥΡ, κελιά `HHMMHHMM` / `ΑΝ` / label άδειας. Spec: LITTLEMOSQUE_BRAIN §5α.
 - ✅ Midnight-crossing (επιβεβαιωμένο 2026-08-21): στο UI εμφανίζεται 17:00–01:00, στο export `17000100` **στην ημέρα έναρξης**.
 
+## ⚠ Εκκρεμότητες Φώτη (πριν τον πιλότο)
+
+1. **Supabase → Authentication → Providers → Email: «Confirm email» OFF** — ΧΩΡΙΣ ΑΥΤΟ δεν ολοκληρώνονται οι προσκλήσεις εργαζομένων (ψευδο-email `<κινητό>@employee.vardia.app`, δεν υπάρχει inbox).
+2. **Vercel project**: import repo `AdigitalAgency/vardia`, env `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Το PWA/service worker θέλει HTTPS — δουλεύει μόνο μετά το deploy (στο localhost το SW είναι σκόπιμα ανενεργό).
+3. **Web Push αποστολή** (προαιρετικό): το UI/SW/subscriptions είναι έτοιμα· λείπει το server-side send (VAPID keys + API route με service-role). Το in-app banner καλύπτει το v1 — το push είναι enhancement (PM §1.2-U2).
+
 ## v1 Scope (δεσμευτικό — τίποτα άλλο)
 
 Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδοποιήσεις · employee λίστα · leave requests · accountant export + ιστορικό · onboarding wizard 5 βημάτων · PWA + Web Push best-effort · invites SMS/Viber · guardrail 11ωρης ανάπαυσης (warning στο publish) · audit_log + shift_revisions.
@@ -47,4 +53,6 @@ Grid + preset pad + auto-advance · copy week · draft→publish + diff ειδο
 - 2026-08-21 (στ): **Οθόνη λογιστή ΥΛΟΠΟΙΗΘΗΚΕ + verified**: migration 0004 (first_name/last_name), `summary.ts` (ώρες/νυχτερινά/Κυριακές με επιμερισμό ανά ημερολογιακή ημέρα — tested), ExportView (μήνας/εβδομάδα, πίνακας σύνοψης + σύνολα, warnings ελλιπών ΑΦΜ & μη δημοσιευμένων εβδομάδων, προεπισκόπηση, κατέβασμα CSV με BOM), `buildPeriodMatrix` (1 εβδομάδα = ακριβώς το δείγμα πελάτη· πολλές = block ανά εβδομάδα· μόνο όσοι έχουν πρόγραμμα), PayrollSheet, AccountantShell + `/demo/accountant`, tab «Εξαγωγή» και στον owner. 55 tests.
   ~~(α) migration 0004~~ ✅ ΕΓΙΝΕ (Φώτης).
 - 2026-08-21 (ζ): **Onboarding wizard ΥΛΟΠΟΙΗΘΗΚΕ + verified** — ο wizard ΕΙΝΑΙ το provisioning (§2.4): migration 0005 `provision_tenant` RPC (tenant+owner membership+τμήματα+προσωπικό+presets σε μία συναλλαγή, μοναδικό slug, όριο 10/user, audit entry), SetupWizard 5 βημάτων με defaults εστίασης και μαζική εισαγωγή ονομάτων, `slug.ts` με ελληνικό transliteration, `/app/setup` (2ο κατάστημα) + `/demo/setup`. Χωρίς tenant → ο wizard είναι η πρώτη οθόνη. 59 tests.
-  ⏳ Εκκρεμούν: (α) **Φώτης: τρέξε το `supabase/migrations/0005_provisioning.sql`**· (β) ⚠ **Supabase → Authentication → Providers → Email: «Confirm email» OFF** (ανοιχτό από πριν — χωρίς αυτό οι προσκλήσεις εργαζομένων δεν ολοκληρώνονται)· (γ) Vercel project (env: τα 2 NEXT_PUBLIC_*)· (δ) υπόλοιπο v1: PWA manifest/push, πρόσκληση λογιστή με ρόλο accountant, diff-ειδοποιήσεις στο publish.
+  ~~(α) migration 0005~~ ✅ ΕΓΙΝΕ (Φώτης).
+- 2026-08-21 (η): **🎉 v1 SCOPE COMPLETE.** migration 0006: trigger `log_shift_revision` (καταγράφει αλλαγές σε δημοσιευμένες εβδομάδες — θεμέλιο του diff), `publish_week` RPC (δημοσίευση + ειδοποιήσεις ΜΟΝΟ στους επηρεαζόμενους), `employee_invites.role` (πρόσκληση λογιστή/υπεύθυνου χωρίς καρτέλα). PWA: manifest, service worker (cache + push handlers), icons, registration μόνο σε production. Owner: feedback «ειδοποιήθηκαν Χ» + «Πρόσκληση λογιστή». Employee: in-app NotificationBanner. Invite page: 2 μορφές (κινητό+PIN / email+κωδικός). **Verified: 1η δημοσίευση 5 άτομα → αλλαγή ενός → «μόνο 1 άτομο που επηρεάστηκε».**
+  ⏳ Εκκρεμούν: **migration 0006** + οι 3 εκκρεμότητες στην ενότητα «Εκκρεμότητες Φώτη» παραπάνω.
