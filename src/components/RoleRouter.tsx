@@ -6,6 +6,7 @@ import type { TenantInfo } from "@/lib/types";
 import OwnerShell from "./OwnerShell";
 import EmployeeShell from "./employee/EmployeeShell";
 import AccountantShell from "./accountant/AccountantShell";
+import SetupWizard from "./setup/SetupWizard";
 
 interface Props {
   repo: ScheduleRepo;
@@ -26,17 +27,8 @@ export default function RoleRouter({ repo, demoBadge, forceRole }: Props) {
       .catch(() => setNoTenant(true));
   }, [repo]);
 
-  if (noTenant) {
-    return (
-      <div className="mx-auto max-w-md p-8 text-center text-zinc-600">
-        <h1 className="mb-2 text-lg font-bold">Δεν βρέθηκε κατάστημα</h1>
-        <p className="text-sm">
-          Ο λογαριασμός σου δεν είναι συνδεδεμένος με κάποιο κατάστημα. Μίλησε με τον
-          υπεύθυνό σου.
-        </p>
-      </div>
-    );
-  }
+  // Χωρίς κατάστημα, το πρώτο πράγμα που βλέπει ο χρήστης είναι το στήσιμο.
+  if (noTenant) return <SetupWizard repo={repo} firstTime />;
 
   if (!tenant) {
     return <p className="p-8 text-center text-sm text-zinc-400">Φόρτωση…</p>;

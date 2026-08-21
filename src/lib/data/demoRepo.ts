@@ -10,6 +10,7 @@ import {
 /** Ποιον εργαζόμενο «παίζει» το /demo/employee. */
 const DEMO_EMPLOYEE_ID = "e04";
 import { addDaysISO, mondayOf } from "@/lib/domain/week";
+import { slugify } from "@/lib/domain/slug";
 import type { ScheduleRepo } from "./repo";
 
 /**
@@ -145,6 +146,11 @@ function getOrCreate(weekStart: string): DemoWeek {
 export const demoRepo: ScheduleRepo = {
   async getTenants() {
     return [{ id: "demo", name: "The Little Mosque (demo)", slug: "demo", role: "owner" }];
+  },
+
+  async provisionTenant(input) {
+    // Το demo δεν γράφει πουθενά — επιστρέφει επιτυχία ώστε να δοκιμάζεται ο wizard.
+    return { tenantId: "demo-new", slug: slugify(input.name) };
   },
 
   async getWeek(_tenantId, weekStart) {

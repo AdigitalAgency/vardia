@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EMPTY_CELL, type CellValue, type WeekBundle } from "@/lib/types";
 import { addDaysISO, mondayOf } from "@/lib/domain/week";
+import { slugify } from "@/lib/domain/slug";
 import type { ScheduleRepo } from "./repo";
 
 function cellFromShiftRow(row: {
@@ -60,6 +61,26 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           const t = m.tenants as unknown as { id: string; name: string; slug: string };
           return { id: t.id, name: t.name, slug: t.slug, role: m.role };
         });
+    },
+
+    async provisionTenant(input) {
+      const { data, error } = await supabase.rpc("provision_tenant", {
+        p_name: input.name,
+        p_slug: slugify(input.name),
+        p_departments: input.departments,
+        p_presets: input.presets,
+      });
+      if (error) {
+        if (error.message.includes("TOO_MANY_TENANTS")) {
+          throw new Error("Έχεις ήδη πολλά καταστήματα σε αυτόν τον λογαριασμό.");
+        }
+        if (error.message.includes("NAME_REQUIRED")) {
+          throw new Error("Δώσε όνομα καταστήματος.");
+        }
+        throw error;
+      }
+      const res = data as { tenant_id: string; slug: string };
+      return { tenantId: res.tenant_id, slug: res.slug };
     },
 
     async getWeek(tenantId, weekStart) {

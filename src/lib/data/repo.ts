@@ -13,8 +13,16 @@ import type {
  * Το UI μιλάει ΜΟΝΟ σε αυτό το interface. Υλοποιήσεις: SupabaseRepo (πραγματικά
  * δεδομένα, RLS) και DemoRepo (in-memory, /demo χωρίς login).
  */
+export interface ProvisionInput {
+  name: string;
+  departments: Array<{ name: string; employees: string[] }>;
+  presets: Array<{ label: string; kind: string; start: number | null; end: number | null }>;
+}
+
 export interface ScheduleRepo {
   getTenants(): Promise<TenantInfo[]>;
+  /** Στήνει νέο κατάστημα και κάνει τον τρέχοντα χρήστη owner του. */
+  provisionTenant(input: ProvisionInput): Promise<{ tenantId: string; slug: string }>;
 
   // ---------- Owner / manager ----------
 

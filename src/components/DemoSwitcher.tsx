@@ -8,6 +8,7 @@ const ROLES = [
   { href: "/demo", label: "Υπεύθυνος" },
   { href: "/demo/employee", label: "Εργαζόμενος" },
   { href: "/demo/accountant", label: "Λογιστής" },
+  { href: "/demo/setup", label: "Στήσιμο" },
 ];
 
 export default function DemoSwitcher() {
