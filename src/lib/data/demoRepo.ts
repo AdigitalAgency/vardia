@@ -5,6 +5,7 @@ import {
   type LeaveRequest,
   type PayrollFields,
   type ShiftPreset,
+  type ShiftUsage,
   type WeekBundle,
 } from "@/lib/types";
 
@@ -66,7 +67,7 @@ interface DemoWeek {
 }
 
 const weeks = new Map<string, DemoWeek>();
-const presetUsage: Record<string, Record<string, number>> = {};
+const usage: Record<string, ShiftUsage[]> = {};
 const leaveRequests: LeaveRequest[] = [];
 const notifications: AppNotification[] = [];
 let seeded = false;
@@ -78,10 +79,13 @@ const payrollById: Record<string, PayrollFields> = {
   e05: { payrollId: "104", afm: "234567891", firstName: "Νίκος", lastName: "Γιαννούλας" },
 };
 
-function bumpUsage(employeeId: string, presetId: string | null | undefined, delta = 1) {
-  if (!presetId) return;
-  presetUsage[employeeId] ??= {};
-  presetUsage[employeeId][presetId] = (presetUsage[employeeId][presetId] ?? 0) + delta;
+/** Μετρά ωράρια (preset ή custom) ανά εργαζόμενο — ό,τι κάνει και το SQL. */
+function bumpUsage(employeeId: string, cell: CellValue, delta = 1) {
+  if (cell.kind !== "work" || cell.start == null || cell.end == null) return;
+  const list = (usage[employeeId] ??= []);
+  const hit = list.find((u) => u.start === cell.start && u.end === cell.end);
+  if (hit) hit.count += delta;
+  else list.push({ start: cell.start, end: cell.end, count: delta });
 }
 
 function emptyCells(): Record<string, CellValue[]> {
@@ -94,8 +98,9 @@ function seedWeek(weekStart: string): DemoWeek {
   const cells = emptyCells();
   const set = (emp: string, day: number, presetId: string) => {
     const p = PRESETS.find((x) => x.id === presetId)!;
-    cells[emp][day] = { kind: p.kind, presetId: p.id, start: p.start, end: p.end };
-    bumpUsage(emp, p.kind === "work" ? p.id : null);
+    const cell: CellValue = { kind: p.kind, presetId: p.id, start: p.start, end: p.end };
+    cells[emp][day] = cell;
+    bumpUsage(emp, cell);
   };
   for (let d = 0; d < 7; d++) set("e04", d, d === 4 || d === 6 ? "p8" : "p1");
   for (let d = 0; d < 7; d++) set("e05", d, d === 1 ? "p8" : "p2");
@@ -180,7 +185,7 @@ export const demoRepo: ScheduleRepo = {
       employees: EMPLOYEES,
       presets: PRESETS,
       cells: structuredClone(w.cells),
-      presetUsage: structuredClone(presetUsage),
+      usage: structuredClone(usage),
     };
   },
 
@@ -188,11 +193,33 @@ export const demoRepo: ScheduleRepo = {
     const week = [...weeks.values()].find((w) => w.weekId === weekId);
     if (!week) return;
     week.cells[employeeId][dayIndex] = value;
-    if (value.kind === "work") bumpUsage(employeeId, value.presetId);
+    bumpUsage(employeeId, value);
     if (week.status === "published" || week.status === "published_dirty") {
       week.status = "published_dirty";
       week.changedSincePublish.add(employeeId);
     }
+  },
+
+  async setRow(_tenantId, weekId, employeeId, value) {
+    const week = [...weeks.values()].find((w) => w.weekId === weekId);
+    if (!week) return { filled: 0, skippedLeave: 0 };
+    const row = week.cells[employeeId];
+    let filled = 0;
+    let skippedLeave = 0;
+    for (let d = 0; d < 7; d++) {
+      if (row[d].kind === "adeia") {
+        skippedLeave += 1;
+        continue;
+      }
+      row[d] = { ...value };
+      bumpUsage(employeeId, value);
+      filled += 1;
+    }
+    if (week.status === "published" || week.status === "published_dirty") {
+      week.status = "published_dirty";
+      week.changedSincePublish.add(employeeId);
+    }
+    return { filled, skippedLeave };
   },
 
   async copyPreviousWeek(_tenantId, _weekId, weekStart) {

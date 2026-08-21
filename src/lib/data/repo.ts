@@ -36,6 +36,16 @@ export interface ScheduleRepo {
     dayIndex: number,
     value: CellValue
   ): Promise<void>;
+  /**
+   * Γεμίζει ΟΛΗ την εβδομάδα ενός εργαζόμενου με το ίδιο ωράριο.
+   * Οι εγκεκριμένες άδειες ΔΕΝ αντικαθίστανται — επιστρέφεται πόσες παραλείφθηκαν.
+   */
+  setRow(
+    tenantId: string,
+    weekId: string,
+    employeeId: string,
+    value: CellValue
+  ): Promise<{ filled: number; skippedLeave: number }>;
   /** Αντιγράφει τα κελιά της προηγούμενης εβδομάδας στην τρέχουσα (draft). */
   copyPreviousWeek(tenantId: string, weekId: string, weekStart: string): Promise<WeekBundle>;
   /** Δημοσίευση + στοχευμένες ειδοποιήσεις· επιστρέφει πόσοι ειδοποιήθηκαν. */

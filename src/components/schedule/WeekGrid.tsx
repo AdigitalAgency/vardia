@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import type { CellValue, Department, Employee } from "@/lib/types";
 import { LEAVE_TYPES } from "@/lib/types";
 import { formatInterval } from "@/lib/domain/time";
@@ -12,6 +13,73 @@ interface Props {
   cells: Record<string, CellValue[]>;
   selected: { employeeId: string; dayIndex: number } | null;
   onSelect: (employeeId: string, dayIndex: number) => void;
+  /** Παρατεταμένο πάτημα (ή δεξί κλικ) σε γεμάτο κελί — αντιγραφή σε όλη τη γραμμή. */
+  onLongPress?: (employeeId: string, dayIndex: number) => void;
+}
+
+const LONG_PRESS_MS = 450;
+
+/**
+ * Κελί με υποστήριξη παρατεταμένου πατήματος. Το drag & drop απορρίφθηκε για
+ * κινητό (UI spec §5.1) — το long-press είναι η mobile-native χειρονομία για
+ * «κάνε κάτι με αυτό το στοιχείο».
+ */
+function GridCell({
+  cell,
+  isSelected,
+  onSelect,
+  onLongPress,
+}: {
+  cell: CellValue;
+  isSelected: boolean;
+  onSelect: () => void;
+  onLongPress?: () => void;
+}) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fired = useRef(false);
+
+  const canLongPress = !!onLongPress && cell.kind !== "empty";
+
+  function start() {
+    if (!canLongPress) return;
+    fired.current = false;
+    timer.current = setTimeout(() => {
+      fired.current = true;
+      navigator.vibrate?.(15);
+      onLongPress!();
+    }, LONG_PRESS_MS);
+  }
+
+  function cancel() {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }
+
+  return (
+    <td
+      onPointerDown={start}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(e) => {
+        if (!canLongPress) return;
+        e.preventDefault();
+        fired.current = true;
+        onLongPress!();
+      }}
+      onClick={() => {
+        // Το long-press δεν πρέπει να ανοίγει και το pad από πάνω.
+        if (fired.current) {
+          fired.current = false;
+          return;
+        }
+        onSelect();
+      }}
+      className={cellClasses(cell, isSelected)}
+    >
+      {cellLabel(cell)}
+    </td>
+  );
 }
 
 function cellLabel(c: CellValue): string {
@@ -51,6 +119,7 @@ export default function WeekGrid({
   cells,
   selected,
   onSelect,
+  onLongPress,
 }: Props) {
   const byDept = departments
     .map((d) => ({
@@ -90,6 +159,7 @@ export default function WeekGrid({
               cells={cells}
               selected={selected}
               onSelect={onSelect}
+              onLongPress={onLongPress}
             />
           ))}
         </tbody>
@@ -104,12 +174,14 @@ function FragmentRows({
   cells,
   selected,
   onSelect,
+  onLongPress,
 }: {
   deptName: string;
   emps: Employee[];
   cells: Record<string, CellValue[]>;
   selected: Props["selected"];
   onSelect: Props["onSelect"];
+  onLongPress?: Props["onLongPress"];
 }) {
   return (
     <>
@@ -127,16 +199,13 @@ function FragmentRows({
             {e.fullName}
           </td>
           {(cells[e.id] ?? []).map((c, day) => (
-            <td
+            <GridCell
               key={day}
-              onClick={() => onSelect(e.id, day)}
-              className={cellClasses(
-                c,
-                selected?.employeeId === e.id && selected?.dayIndex === day
-              )}
-            >
-              {cellLabel(c)}
-            </td>
+              cell={c}
+              isSelected={selected?.employeeId === e.id && selected?.dayIndex === day}
+              onSelect={() => onSelect(e.id, day)}
+              onLongPress={onLongPress ? () => onLongPress(e.id, day) : undefined}
+            />
           ))}
         </tr>
       ))}

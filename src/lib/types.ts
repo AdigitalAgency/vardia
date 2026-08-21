@@ -43,8 +43,18 @@ export interface WeekBundle {
   presets: ShiftPreset[];
   /** employeeId → 7 κελιά (index 0 = Δευτέρα) */
   cells: Record<string, CellValue[]>;
-  /** employeeId → presetId → πλήθος χρήσεων (all-time) — για δυναμική σειρά στο preset pad */
-  presetUsage: Record<string, Record<string, number>>;
+  /**
+   * employeeId → ωράρια που έχει δουλέψει με πλήθος χρήσεων (all-time).
+   * Μετρά ΚΑΙ τα custom ωράρια, όχι μόνο τα presets του μαγαζιού.
+   */
+  usage: Record<string, ShiftUsage[]>;
+}
+
+/** Ένα ωράριο (λεπτά από μεσάνυχτα) και πόσες φορές το έχει δουλέψει ο εργαζόμενος. */
+export interface ShiftUsage {
+  start: number;
+  end: number;
+  count: number;
 }
 
 export interface StaffMember {

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { EMPTY_CELL, type CellValue, type WeekBundle } from "@/lib/types";
+import { EMPTY_CELL, type CellValue, type ShiftUsage, type WeekBundle } from "@/lib/types";
 import { addDaysISO, mondayOf } from "@/lib/domain/week";
 import { slugify } from "@/lib/domain/slug";
 import type { ScheduleRepo } from "./repo";
@@ -126,20 +126,23 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
         if (r.error) throw r.error;
       }
 
-      // Συχνότητα χρήσης preset ανά εργαζόμενο (all-time) — δυναμική σειρά στο pad.
+      // Συχνότητα ΩΡΑΡΙΩΝ ανά εργαζόμενο (all-time), preset ή custom αδιακρίτως —
+      // έτσι μαθαίνει και τα δικά του custom ωράρια, όχι μόνο τα presets του μαγαζιού.
       const { data: usageRows, error: uerr } = await supabase
         .from("shifts")
-        .select("employee_id, preset_id")
+        .select("employee_id, start_time, end_time")
         .eq("tenant_id", tenantId)
         .eq("kind", "work")
-        .not("preset_id", "is", null)
+        .not("start_time", "is", null)
         .limit(20000);
       if (uerr) throw uerr;
-      const presetUsage: Record<string, Record<string, number>> = {};
+      const usage: Record<string, ShiftUsage[]> = {};
       for (const r of usageRows ?? []) {
-        presetUsage[r.employee_id] ??= {};
-        presetUsage[r.employee_id][r.preset_id!] =
-          (presetUsage[r.employee_id][r.preset_id!] ?? 0) + 1;
+        if (r.start_time == null || r.end_time == null) continue;
+        const list = (usage[r.employee_id] ??= []);
+        const hit = list.find((u) => u.start === r.start_time && u.end === r.end_time);
+        if (hit) hit.count += 1;
+        else list.push({ start: r.start_time, end: r.end_time, count: 1 });
       }
 
       const employeeList = (employees.data ?? []).map((e) => ({
@@ -168,7 +171,7 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           sortOrder: p.sort_order,
         })),
         cells: await loadCells(supabase, week.id, weekStart, employeeList.map((e) => e.id)),
-        presetUsage,
+        usage,
       } satisfies WeekBundle;
     },
 
@@ -220,6 +223,63 @@ export function createSupabaseRepo(supabase: SupabaseClient): ScheduleRepo {
           .eq("id", weekId);
         if (error) throw error;
       }
+    },
+
+    async setRow(tenantId, weekId, employeeId, value) {
+      const { data: week, error: werr } = await supabase
+        .from("schedule_weeks")
+        .select("week_start_date, status")
+        .eq("id", weekId)
+        .single();
+      if (werr) throw werr;
+
+      // Οι εγκεκριμένες άδειες είναι απόφαση, όχι πρόχειρο — δεν τις πατάμε.
+      const { data: existing, error: eerr } = await supabase
+        .from("shifts")
+        .select("date, kind")
+        .eq("week_id", weekId)
+        .eq("employee_id", employeeId);
+      if (eerr) throw eerr;
+      const protectedDates = new Set(
+        (existing ?? []).filter((s) => s.kind === "adeia").map((s) => s.date)
+      );
+
+      const dates = Array.from({ length: 7 }, (_, i) =>
+        addDaysISO(week.week_start_date, i)
+      ).filter((d) => !protectedDates.has(d));
+
+      if (dates.length) {
+        const crosses =
+          value.kind === "work" && value.start != null && value.end != null
+            ? value.end <= value.start
+            : false;
+        const { error } = await supabase.from("shifts").upsert(
+          dates.map((date) => ({
+            tenant_id: tenantId,
+            week_id: weekId,
+            employee_id: employeeId,
+            date,
+            kind: value.kind,
+            preset_id: value.presetId ?? null,
+            start_time: value.start ?? null,
+            end_time: value.end ?? null,
+            crosses_midnight: crosses,
+            leave_type: value.leaveType ?? null,
+            updated_at: new Date().toISOString(),
+          })),
+          { onConflict: "week_id,employee_id,date" }
+        );
+        if (error) throw error;
+      }
+
+      if (week.status === "published") {
+        await supabase
+          .from("schedule_weeks")
+          .update({ status: "published_dirty" })
+          .eq("id", weekId);
+      }
+
+      return { filled: dates.length, skippedLeave: protectedDates.size };
     },
 
     async copyPreviousWeek(tenantId, weekId, weekStart) {

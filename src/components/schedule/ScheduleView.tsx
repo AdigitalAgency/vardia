@@ -45,9 +45,28 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
     [bundle]
   );
 
-  function applyToSelected(value: CellValue) {
+  /** Τοπικό bump ώστε οι προτάσεις να προσαρμόζονται αμέσως, χωρίς reload. */
+  function bumpUsage(employeeId: string, value: CellValue, times = 1) {
+    if (value.kind !== "work" || value.start == null || value.end == null) return;
+    setBundle((b) => {
+      if (!b) return b;
+      const list = [...(b.usage[employeeId] ?? [])];
+      const i = list.findIndex((u) => u.start === value.start && u.end === value.end);
+      if (i >= 0) list[i] = { ...list[i], count: list[i].count + times };
+      else list.push({ start: value.start!, end: value.end!, count: times });
+      return { ...b, usage: { ...b.usage, [employeeId]: list } };
+    });
+  }
+
+  function applyToSelected(value: CellValue, wholeWeek = false) {
     if (!bundle || !selected || !tenant) return;
     const { employeeId, dayIndex } = selected;
+
+    if (wholeWeek) {
+      fillRow(employeeId, value);
+      return;
+    }
+
     setBundle((b) => {
       if (!b) return b;
       const cells = { ...b.cells, [employeeId]: [...b.cells[employeeId]] };
@@ -55,31 +74,56 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
       const status = b.status === "published" ? "published_dirty" : b.status;
       return { ...b, cells, status };
     });
-    if (value.kind === "work" && value.presetId) {
-      // Τοπικό bump ώστε η σειρά του pad να προσαρμόζεται αμέσως.
-      setBundle((b) => {
-        if (!b) return b;
-        const usage = { ...b.presetUsage, [employeeId]: { ...(b.presetUsage[employeeId] ?? {}) } };
-        usage[employeeId][value.presetId!] = (usage[employeeId][value.presetId!] ?? 0) + 1;
-        return { ...b, presetUsage: usage };
-      });
-    }
+    bumpUsage(employeeId, value);
     repo
       .setCell(tenant.id, bundle.weekId, employeeId, dayIndex, value)
       .catch((e) => setError("Η αποθήκευση απέτυχε: " + String(e?.message ?? e)));
     advance();
   }
 
-  /** Presets ταξινομημένα με τη συχνότητα χρήσης του επιλεγμένου εργαζόμενου. */
-  const presetsForSelected = useMemo(() => {
-    if (!bundle) return [];
-    if (!selected) return bundle.presets;
-    const usage = bundle.presetUsage[selected.employeeId] ?? {};
-    return [...bundle.presets].sort((a, b) => {
-      if (a.kind !== "work" || b.kind !== "work") return a.sortOrder - b.sortOrder;
-      return (usage[b.id] ?? 0) - (usage[a.id] ?? 0) || a.sortOrder - b.sortOrder;
+  /** Γεμίζει όλη τη γραμμή ενός εργαζόμενου, χωρίς να πατά εγκεκριμένες άδειες. */
+  async function fillRow(employeeId: string, value: CellValue) {
+    if (!bundle || !tenant) return;
+    const name = bundle.employees.find((e) => e.id === employeeId)?.fullName ?? "";
+    setSelected(null);
+    setBundle((b) => {
+      if (!b) return b;
+      const row = (b.cells[employeeId] ?? []).map((c) =>
+        c.kind === "adeia" ? c : { ...value }
+      );
+      const status = b.status === "published" ? "published_dirty" : b.status;
+      return { ...b, cells: { ...b.cells, [employeeId]: row }, status };
     });
-  }, [bundle, selected]);
+    bumpUsage(employeeId, value, 7);
+    try {
+      const res = await repo.setRow(tenant.id, bundle.weekId, employeeId, value);
+      setNotice(
+        res.skippedLeave > 0
+          ? `${name}: γέμισαν ${res.filled} ημέρες. ${res.skippedLeave === 1 ? "1 άδεια έμεινε" : `${res.skippedLeave} άδειες έμειναν`} ως έχει.`
+          : `${name}: όλη η εβδομάδα γέμισε.`
+      );
+      setTimeout(() => setNotice(null), 5000);
+    } catch (e) {
+      setError("Η αντιγραφή απέτυχε: " + String((e as Error)?.message ?? e));
+      loadWeek();
+    }
+  }
+
+  /** Long-press σε γεμάτο κελί → αντιγραφή του σε όλη την εβδομάδα. */
+  function copyCellToWeek(employeeId: string, dayIndex: number) {
+    if (!bundle) return;
+    const cell = bundle.cells[employeeId]?.[dayIndex];
+    if (!cell || cell.kind === "empty") return;
+    const name = bundle.employees.find((e) => e.id === employeeId)?.fullName ?? "";
+    const what =
+      cell.kind === "work" && cell.start != null && cell.end != null
+        ? formatInterval({ start: cell.start, end: cell.end })
+        : cell.kind === "repo"
+          ? "ΡΕΠΟ"
+          : "ΑΔΕΙΑ";
+    if (!window.confirm(`Να μπει «${what}» σε όλη την εβδομάδα του/της ${name};`)) return;
+    fillRow(employeeId, cell);
+  }
 
   /** Auto-advance: επόμενη ημέρα ίδιου εργαζόμενου· μετά την Κυριακή, επόμενος εργαζόμενος. */
   function advance() {
@@ -233,6 +277,7 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
               cells={bundle.cells}
               selected={selected}
               onSelect={(employeeId, dayIndex) => setSelected({ employeeId, dayIndex })}
+              onLongPress={copyCellToWeek}
             />
           </>
         )}
@@ -240,7 +285,11 @@ export default function ScheduleView({ repo, tenant, demoBadge }: Props) {
 
       {bundle && selected && (
         <PresetPad
-          presets={presetsForSelected}
+          presets={bundle.presets}
+          usage={bundle.usage[selected.employeeId]}
+          employeeName={
+            bundle.employees.find((e) => e.id === selected.employeeId)?.fullName ?? ""
+          }
           selectionLabel={selectionLabel}
           onApply={applyToSelected}
           onClear={() => applyToSelected({ ...EMPTY_CELL })}
